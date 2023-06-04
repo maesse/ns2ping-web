@@ -36,6 +36,7 @@ If using Docker you can mount a docker volume to /App/config to enable persistan
 ## Todo
 
 - Add/Remove/Modify servers using the web interface
+- Allow for personalized view of servers using cookies (for multiuser support)
 ## Authors
 
 - [Mads Lind / @maesse](https://www.github.com/maesse)
