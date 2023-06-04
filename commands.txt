@@ -1,0 +1,2 @@
+docker build -t ns2ping-web-image -f Dockerfile .
+docker run --name ns2ping-web -v ns2ping-web-config:/App/config -p 80:80 -d ns2ping-web-image

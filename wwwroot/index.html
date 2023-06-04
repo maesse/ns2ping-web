@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8" />
+    <title>NS2 Server Browser</title>
+    <link href="https://fonts.googleapis.com/css?family=Roboto:300,400&display=swap" rel="stylesheet">
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet"
+        integrity="sha384-9ndCyUaIbzAi2FUVXJi0CjmCapSmO7SnpJef0486qhLnuZ2cdeRhO02iuK6FUUVM" crossorigin="anonymous">
+    <script>
+        function alpineInstance() {
+            return {
+                title: 'NS2 Server Browser',
+                intro: 'List over servers:',
+                heartbeat: true,
+                servers: [],
+                getServers() {
+                    fetch('/servers')
+                        .then(response => response.json())
+                        .then(data => {
+                            if (this.servers.length == data.length) {
+                                for (let i = 0; i < this.servers.length; i++) {
+                                    for (let key in data[i]) {
+                                        if (this.servers[i][key] !== data[i][key]) {
+                                            this.servers[i][key] = data[i][key];
+                                        }
+                                    }
+                                }
+                            } else {
+                                this.servers = data;
+                            }
+                            this.heartbeat = !this.heartbeat;
+                        });
+
+                },
+                startTimer() {
+                    this.getServers();
+                    setInterval(() => { this.getServers() }, 1000);
+                },
+                getServerIcon(server) {
+                    if (server.ping >= 999) return '💀';
+                    if (server.playersIngame <= 0) return '💤';
+                    return (server.joinable ? '✔️' : '✋') + (server.recentlyWentJoinable ? '🛎️' : '');
+                },
+                getTierIconUrl(mmr) {
+                    if (mmr === null || mmr === "N/A") return "/images/Tier_unknown.webp";
+                    if (mmr <= 300) return "/images/Tier_1.webp";
+                    if (mmr <= 750) return "/images/Tier_2.webp";
+                    if (mmr <= 1400) return "/images/Tier_3.webp";
+                    if (mmr <= 2100) return "/images/Tier_4.webp";
+                    if (mmr <= 2900) return "/images/Tier_5.webp";
+                    if (mmr <= 4100) return "/images/Tier_6.webp";
+                    if (mmr <= 9999) return "/images/Tier_7.webp";
+                    return "/images/Tier_unknown.webp";
+                }
+            }
+        }
+        function playSound(play, oldplay) {
+            if (play && !oldplay) {
+                var audio = new Audio('/sounds/mixkit-long-pop-2358.wav');
+                audio.play();
+                console.log("Made a sound!");
+            }
+        }
+    </script>
+    <link rel="stylesheet" href="css/style.css">
+    <style>
+        .greyout {
+            opacity: 0.2;
+        }
+
+        .custom-table tbody tr.highlight-anim td {
+            animation-name: colorfade;
+            animation-duration: 10s;
+            animation-iteration-count: 1;
+            animation-timing-function: ease-in;
+        }
+
+        @keyframes colorfade {
+            from {
+                background: #39303a;
+            }
+
+            to {}
+        }
+
+        .pulse-anim {
+            animation-name: scaleanim;
+            animation-duration: 300ms;
+            animation-iteration-count: 1;
+        }
+
+        @keyframes scaleanim {
+            from {
+                font-size: 125%;
+            }
+
+            to {}
+        }
+
+        .tiercontainer {
+            position: relative;
+            display: inline-block;
+        }
+
+        .tierimage {
+            margin-top: -15px;
+        }
+
+        .tier {
+            position: absolute;
+            z-index: 10;
+            text-align: center;
+            vertical-align: middle;
+            width: 100%;
+            height: 100%;
+            left: 0;
+            text-shadow:
+                -1px -1px 0 #000,
+                1px -1px 0 #000,
+                -1px 1px 0 #000,
+                1px 1px 0 #000;
+            display: inline-block;
+            top: 10px;
+        }
+
+        span.icons {
+            display: inline-block;
+            min-width: 4ch;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="content">
+        <div class="container" x-data="alpineInstance()" x-init="startTimer()" data-bs-theme="dark">
+            <div><span class="h1" style="color: #dddddd;">NS2 Server Browser</span><span
+                    class="user-select-none align-middle" x-data="{pulse: false}"
+                    x-init="$watch('heartbeat', () => {pulse = false; $nextTick(() => {pulse=true;});})"
+                    x-on:click="pulse = false; $nextTick(() => {pulse=true;});" :class="pulse ? 'pulse-anim' : ''"
+                    style="position:absolute; width:40px; text-align:center">❤️</span></div>
+            <div class="table-responsive custom-table-responsive">
+                <table class="table custom-table">
+                    <thead>
+                        <tr>
+                            <th scope="col">&nbsp;</th>
+                            <th scope="col">Players</th>
+                            <th scope="col">MMR</th>
+                            <th scope="col">Name</th>
+                            <th scope="col">Map</th>
+                            <th scope="col">Ping</th>
+                            <th scope="col">Connect</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <!-- begin: server card -->
+                        <template x-for="server in servers" :key="server.id">
+                            <tr class="border-black border-bottom" scope="row"
+                                x-init="$watch('server.recentlyWentJoinable', (value, oldvalue) => { if(value && (value != oldvalue)) { $el.classList.remove('highlight-anim'); void $el.offsetWidth; $el.classList.add('highlight-anim'); } }); $watch('server.joinable', (value, oldvalue) => playSound(value, oldvalue))"
+                                :class="server.ping >= 999 ? 'greyout' : ''"
+                                :style="server.ping >= 999 ? 'pointer-events:none' : ''">
+                                <td class="align-middle fs-4">
+                                    <span class="icons" x-text="getServerIcon(server)"
+                                        style="pointer-events:none"></span>
+                                </td>
+                                <template x-if="server.ping < 999">
+                                    <td class="align-middle ">
+                                        <span class="btn btn-secondary fs-6 fw-normal"
+                                            style="display: inline-block; width: 100%; pointer-events:none">
+                                            <span x-text="server.playersIngame"></span>
+                                            <span>/</span>
+                                            <span x-text="server.maxPlayers"></span>
+                                            <span>[</span>
+                                            <span x-text="server.spectators"></span>
+                                            <span>/</span>
+                                            <span x-text="server.maxSpectators"></span>
+                                            <span>]</span>
+                                        </span>
+                                    </td>
+                                </template>
+                                <template x-if="server.ping >= 999">
+                                    <td class="align-middle">
+                                        <span>-</span>
+                                    </td>
+                                </template>
+                                <td class="align-middle">
+                                    <div class="tiercontainer">
+                                        <img class="tierimage" :src="getTierIconUrl(server.mmr)" />
+                                        <span class="tier" x-text="server.mmr" style="pointer-events:none"></span>
+                                    </div>
+                                </td>
+                                <td class="align-middle"><span class="fs-4" x-text="server.serverName"
+                                        style="pointer-events:none"></span></td>
+                                <td class="align-middle"><span class="text-uppercase" x-text="server.mapName"
+                                        style="pointer-events:none"></span>
+                                </td>
+                                <td class="align-middle"><span x-text="server.ping" style="pointer-events:none"></span>
+                                </td>
+                                <td class="align-middle fs-4"><a
+                                        :href="'steam://run/4920//+connect ' + server.hostname + ':' + server.port + '/'">🚀</a>
+                                </td>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+                <!-- end: server card -->
+            </div>
+        </div>
+    </div>
+</body>
+
+</html>
