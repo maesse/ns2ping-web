@@ -37,6 +37,8 @@ namespace MyApp
 
         public int GetPlayersIngame()
         {
+            if (KeywordParts.Count <= EXT_PLAYERS_INGAME) return Players;
+
             int number;
             int.TryParse(KeywordParts[EXT_PLAYERS_INGAME], out number);
             return number;
@@ -44,6 +46,8 @@ namespace MyApp
 
         public int GetSpectators()
         {
+            if (KeywordParts.Count <= EXT_SPECTATORS) return 0;
+
             int number;
             int.TryParse(KeywordParts[EXT_SPECTATORS], out number);
             return number;
@@ -51,6 +55,8 @@ namespace MyApp
 
         public int GetMaxSpectators()
         {
+            if (KeywordParts.Count <= EXT_MAXSPECTATORS) return 0;
+
             int number;
             int.TryParse(KeywordParts[EXT_MAXSPECTATORS], out number);
             return number;
@@ -59,11 +65,14 @@ namespace MyApp
         public string GetMMR()
         {
             string result = "N/A";
-            string val = KeywordParts[EXT_MMR];
-            int number;
-            if (int.TryParse(val, out number))
+            if (KeywordParts.Count > EXT_MMR)
             {
-                if (number > 0) result = "" + number;
+                string val = KeywordParts[EXT_MMR];
+                int number;
+                if (int.TryParse(val, out number))
+                {
+                    if (number > 0) result = "" + number;
+                }
             }
             return result;
         }
@@ -74,7 +83,7 @@ namespace MyApp
             reader.Skip(4);
             Header = reader.ReadByte();
             Protocol = reader.ReadByte();
-            Name = reader.ReadString();
+            Name = reader.ReadUTF8String();
             Map = reader.ReadString();
             Folder = reader.ReadString();
             Game = reader.ReadString();

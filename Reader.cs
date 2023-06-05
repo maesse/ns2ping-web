@@ -12,6 +12,11 @@ namespace MyApp
             this.offset = 0;
         }
 
+        public int Remaining()
+        {
+            return data.Length - offset;
+        }
+
         public void Skip(int bytes)
         {
             offset += bytes;
@@ -20,6 +25,14 @@ namespace MyApp
         public byte ReadByte()
         {
             return data[offset++];
+        }
+
+        public byte[] ReadBytes(int count)
+        {
+            var dest = new byte[count];
+            Array.Copy(data, offset, dest, 0, count);
+            offset += count;
+            return dest;
         }
 
         public string ReadString()
@@ -34,9 +47,28 @@ namespace MyApp
             return str;
         }
 
+        public string ReadUTF8String()
+        {
+            int len = 0;
+            for (; len < data.Length; len++)
+            {
+                if (data[offset + len] == 0) break;
+            }
+            string str = Encoding.UTF8.GetString(data, offset, len);
+            offset += len + 1;
+            return str;
+        }
+
         public short ReadShort()
         {
             short value = (short)(data[offset] + (data[offset + 1] << 8));
+            offset += 2;
+            return value;
+        }
+
+        public ushort ReadUShortBE()
+        {
+            ushort value = (ushort)(data[offset + 1] + (data[offset] << 8));
             offset += 2;
             return value;
         }

@@ -65,11 +65,10 @@ namespace MyApp
             }
 
             byte[] payload = { 0xff, 0xff, 0xff, 0xff };
-            payload = Append(payload, Encoding.ASCII.GetBytes("TSource Engine Query"));
-            payload = Append(payload, new byte[] { 0 });
+            payload = Writer.AppendCString(payload, "TSource Engine Query");
             if (challenge != null)
             {
-                payload = Append(payload, challenge);
+                payload = Writer.Append(payload, challenge);
             }
 
             int bytesSent = client.Send(payload, payload.Length, EndPoint);
@@ -94,20 +93,23 @@ namespace MyApp
             return false;
         }
 
-        private static byte[] Append(byte[] source, byte[] append)
-        {
-            byte[] dest = new byte[source.Length + append.Length];
-            Buffer.BlockCopy(source, 0, dest, 0, source.Length);
-            Buffer.BlockCopy(append, 0, dest, source.Length, append.Length);
-            return dest;
-        }
+
 
         internal bool IsReadyForRefresh()
         {
             int msSinceLastRequest = (int)(DateTime.Now - lastRequestTime).TotalMilliseconds;
             if (!requestInFlight)
             {
-                return msSinceLastRequest > 3000;
+                if (info != null && info.GetPlayersIngame() == 0)
+                {
+                    // Throttle down on empty servers
+                    return msSinceLastRequest > 10000;
+                }
+                else
+                {
+                    return msSinceLastRequest > 3000;
+                }
+
             }
             else
             {

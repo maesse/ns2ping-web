@@ -53,11 +53,19 @@
                     if (mmr <= 4100) return "/images/Tier_6.webp";
                     if (mmr <= 9999) return "/images/Tier_7.webp";
                     return "/images/Tier_unknown.webp";
+                },
+                onRecentlyWentJoinableChanged: function (value, oldvalue, el) {
+                    if (value && (value != oldvalue)) {
+                        el.classList.remove('highlight-anim');
+                        void el.offsetWidth;
+                        el.classList.add('highlight-anim');
+                        playSound(value, oldvalue);
+                    }
                 }
             }
         }
         function playSound(play, oldplay) {
-            if (play && !oldplay) {
+            if (play === true && oldplay === false) {
                 var audio = new Audio('/sounds/mixkit-long-pop-2358.wav');
                 audio.play();
                 console.log("Made a sound!");
@@ -157,7 +165,7 @@
                         <!-- begin: server card -->
                         <template x-for="server in servers" :key="server.id">
                             <tr class="border-black border-bottom" scope="row"
-                                x-init="$watch('server.recentlyWentJoinable', (value, oldvalue) => { if(value && (value != oldvalue)) { $el.classList.remove('highlight-anim'); void $el.offsetWidth; $el.classList.add('highlight-anim'); } }); $watch('server.joinable', (value, oldvalue) => playSound(value, oldvalue))"
+                                x-init="$watch('server.recentlyWentJoinable', (value, oldvalue) => onRecentlyWentJoinableChanged(value, oldvalue, $el))"
                                 :class="server.ping >= 999 ? 'greyout' : ''"
                                 :style="server.ping >= 999 ? 'pointer-events:none' : ''">
                                 <td class="align-middle fs-4">

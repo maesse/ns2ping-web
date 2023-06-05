@@ -13,6 +13,7 @@ public class PingService : BackgroundService
     private DateTime lastRequest = DateTime.Now;
     public TimeSpan SleepTimeout = TimeSpan.FromSeconds(10);
     private CancellationTokenSource sleepToken = new CancellationTokenSource();
+    private MasterServerQuery masterQuery = new MasterServerQuery();
     public PingService()
     {
         Init();
@@ -25,8 +26,6 @@ public class PingService : BackgroundService
         client = new UdpClient(ep);
 
         ReadConfig();
-
-
     }
 
     private void ReadConfig()
@@ -105,6 +104,11 @@ public class PingService : BackgroundService
 
     public void UpdateServers()
     {
+        if (masterQuery.ReadyForRefresh())
+        {
+            masterQuery.StartRefresh(client);
+        }
+
         foreach (var server in watchedServers)
         {
             if (server.IsReadyForRefresh())
@@ -112,6 +116,24 @@ public class PingService : BackgroundService
                 server.SendInfoRequest(client);
             }
         }
+    }
+
+    private void HandleNewServers()
+    {
+        int newCount = 0;
+        // Add servers that were discovered
+        foreach (var addr in masterQuery.ServerList)
+        {
+            var result = watchedServers.FirstOrDefault(v => IPEndPoint.Equals(v.EndPoint, addr), null);
+            if (result == null)
+            {
+                // Decrement port by one since we are using the game server port here, not the query port
+                var gameaddr = new IPEndPoint(addr.Address, addr.Port - 1);
+                watchedServers.Add(new ServerRecord(gameaddr.ToString()));
+                newCount++;
+            }
+        }
+        Console.WriteLine($"Added {newCount} servers to the watched server list");
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -129,6 +151,7 @@ public class PingService : BackgroundService
                 {
                     UpdateServers();
 
+                    // Handle sleep
                     int delayTime = 1000;
                     if (DateTime.Now - lastRequest > SleepTimeout)
                     {
@@ -137,6 +160,7 @@ public class PingService : BackgroundService
                         sleepToken = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
                         Console.WriteLine("PingService going to sleep");
                     }
+
                     var delayTask = Task.Delay(delayTime, sleepToken.Token);
                     if (receiveTask.IsCompleted)
                     {
@@ -145,12 +169,25 @@ public class PingService : BackgroundService
 
                     while (await Task.WhenAny(delayTask, receiveTask) == receiveTask)
                     {
-                        var server = watchedServers
-                            .SingleOrDefault(v => IPEndPoint.Equals(v!.EndPoint, receiveTask.Result.RemoteEndPoint), null);
-                        if (server != null)
+                        // Handle packet response
+                        var result = receiveTask.Result;
+                        if (IPEndPoint.Equals(result.RemoteEndPoint, masterQuery.EndPoint))
                         {
-                            server.HandleResponse(receiveTask.Result.Buffer, client);
+                            if (masterQuery.HandleResponse(result.Buffer, client))
+                            {
+                                HandleNewServers();
+                            }
                         }
+                        else
+                        {
+                            var server = watchedServers.SingleOrDefault(v => IPEndPoint.Equals(v!.EndPoint, result.RemoteEndPoint), null);
+                            if (server != null)
+                            {
+                                server.HandleResponse(result.Buffer, client);
+                            }
+                        }
+
+
                         receiveTask = client.ReceiveAsync();
                     }
 
