@@ -6,28 +6,39 @@
     <title>NS2 Server Browser</title>
     <link href="https://fonts.googleapis.com/css?family=Roboto:300,400&display=swap" rel="stylesheet">
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <script src="/js/cookies.min.js"></script>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet"
         integrity="sha384-9ndCyUaIbzAi2FUVXJi0CjmCapSmO7SnpJef0486qhLnuZ2cdeRhO02iuK6FUUVM" crossorigin="anonymous">
+    <link rel="stylesheet" href="css/style.css">
     <script>
         function alpineInstance() {
             return {
                 title: 'NS2 Server Browser',
                 intro: 'List over servers:',
                 heartbeat: true,
+                hideEmpty: true,
+                soundEnabled: true,
+                cookie_name: 'c',
+                favoritesOnTop: true,
+                sortKey: 'id',
+                sortInverse: false,
                 servers: [],
                 getServers() {
                     fetch('/servers')
                         .then(response => response.json())
                         .then(data => {
                             if (this.servers.length == data.length) {
-                                for (let i = 0; i < this.servers.length; i++) {
+                                for (let i = 0; i < data.length; i++) {
+                                    // Copy each field if it has changed
+                                    let server = this.servers.find(v => v.id == data[i].id);
                                     for (let key in data[i]) {
-                                        if (this.servers[i][key] !== data[i][key]) {
-                                            this.servers[i][key] = data[i][key];
+                                        if (server[key] !== data[i][key]) {
+                                            server[key] = data[i][key];
                                         }
                                     }
                                 }
                             } else {
+                                data.forEach((v) => { v.favorite = this.isFavorite(v); });
                                 this.servers = data;
                             }
                             this.heartbeat = !this.heartbeat;
@@ -54,118 +65,141 @@
                     if (mmr <= 9999) return "/images/Tier_7.webp";
                     return "/images/Tier_unknown.webp";
                 },
-                onRecentlyWentJoinableChanged: function (value, oldvalue, el) {
+                onRecentlyWentJoinableChanged(value, oldvalue, el, server) {
                     if (value && (value != oldvalue)) {
                         el.classList.remove('highlight-anim');
                         void el.offsetWidth;
                         el.classList.add('highlight-anim');
-                        playSound(value, oldvalue);
+                        if (value === true && oldvalue === false) {
+                            if (!this.soundEnabled || server.favorite) {
+                                this.playSound();
+                            }
+                        }
                     }
+                },
+                filterList(item, hideEmpty) {
+                    if (hideEmpty && item.playersIngame === 0) return false;
+
+                    return true;
+                },
+                playSound() {
+                    var audio = new Audio('/sounds/mixkit-long-pop-2358.wav');
+                    audio.play();
+                    console.log("Made a sound!");
+                },
+                readCookie() {
+                    this.hideEmpty = docCookies.hasItem('hideEmpty') ? (docCookies.getItem('hideEmpty') == 'true') : true;
+                    this.soundEnabled = docCookies.hasItem('soundEnabled') ? (docCookies.getItem('soundEnabled') == 'true') : true;
+                    this.favoritesOnTop = docCookies.hasItem('favoritesOnTop') ? (docCookies.getItem('favoritesOnTop') == 'true') : true;
+                    this.sortKey = docCookies.hasItem('sortKey') ? docCookies.getItem('sortKey') : 'playersIngame';
+                    this.sortInverse = docCookies.hasItem('sortInverse') ? (docCookies.getItem('sortInverse') == 'true') : true;
+                },
+                isFavorite(server) {
+                    if (server.favorite) return true;
+                    let key = server.hostname + ':' + server.port;
+                    server.favorite = docCookies.hasItem(key) ? (docCookies.getItem(key) == 'true') : false;
+                    return server.favorite;
+                },
+                setFavorite(server, value) {
+                    server.favorite = value;
+                    docCookies.setItem(server.hostname + ':' + server.port, value, (7 * 24 * 60 * 60));
+                },
+                sortList(a, b) {
+                    let res = 0;
+                    if (a.favorite === b.favorite || !this.favoritesOnTop) {
+
+                        if (this.sortKey === 'mmr') {
+                            if (a[this.sortKey] === b[this.sortKey]) res = a[this.sortKey].id - b[this.sortKey].id;
+                            else if (a[this.sortKey] === 'N/A') res = -1;
+                            else if (b[this.sortKey] === 'N/A') res = 1;
+                            else res = a[this.sortKey] - b[this.sortKey];
+                        }
+                        else if (this.sortKey != 'ping' && typeof b[this.sortKey] == 'string') {
+                            if (a[this.sortKey] > b[this.sortKey]) res = 1;
+                            else if (a[this.sortKey] < b[this.sortKey]) res = -1;
+                            else res = 0;
+                        } else {
+                            res = a[this.sortKey] - b[this.sortKey];
+                        }
+                    }
+                    else if (a.favorite) return -1;
+                    else if (b.favorite) return 1;
+
+                    if (this.sortInverse) res = res * -1;
+                    return res;
+                },
+                setSortKey(val) {
+                    if (this.sortKey === val) {
+                        this.sortInverse = !this.sortInverse;
+                    } else {
+                        this.sortKey = val;
+                        this.sortInverse = true;
+                        if (val === 'ping') this.sortInverse = false;
+                        if (val === 'serverName') this.sortInverse = false;
+                        if (val === 'mapName') this.sortInverse = false;
+                    }
+                    docCookies.setItem('sortKey', this.sortKey, (7 * 24 * 60 * 60));
+                    docCookies.setItem('sortInverse', this.sortInverse, (7 * 24 * 60 * 60));
                 }
             }
         }
-        function playSound(play, oldplay) {
-            if (play === true && oldplay === false) {
-                var audio = new Audio('/sounds/mixkit-long-pop-2358.wav');
-                audio.play();
-                console.log("Made a sound!");
-            }
-        }
+
     </script>
-    <link rel="stylesheet" href="css/style.css">
-    <style>
-        .greyout {
-            opacity: 0.2;
-        }
-
-        .custom-table tbody tr.highlight-anim td {
-            animation-name: colorfade;
-            animation-duration: 10s;
-            animation-iteration-count: 1;
-            animation-timing-function: ease-in;
-        }
-
-        @keyframes colorfade {
-            from {
-                background: #39303a;
-            }
-
-            to {}
-        }
-
-        .pulse-anim {
-            animation-name: scaleanim;
-            animation-duration: 300ms;
-            animation-iteration-count: 1;
-        }
-
-        @keyframes scaleanim {
-            from {
-                font-size: 125%;
-            }
-
-            to {}
-        }
-
-        .tiercontainer {
-            position: relative;
-            display: inline-block;
-        }
-
-        .tierimage {
-            margin-top: -15px;
-        }
-
-        .tier {
-            position: absolute;
-            z-index: 10;
-            text-align: center;
-            vertical-align: middle;
-            width: 100%;
-            height: 100%;
-            left: 0;
-            text-shadow:
-                -1px -1px 0 #000,
-                1px -1px 0 #000,
-                -1px 1px 0 #000,
-                1px 1px 0 #000;
-            display: inline-block;
-            top: 10px;
-        }
-
-        span.icons {
-            display: inline-block;
-            min-width: 4ch;
-        }
-    </style>
 </head>
 
 <body>
     <div class="content">
         <div class="container" x-data="alpineInstance()" x-init="startTimer()" data-bs-theme="dark">
             <div><span class="h1" style="color: #dddddd;">NS2 Server Browser</span><span
-                    class="user-select-none align-middle" x-data="{pulse: false}"
-                    x-init="$watch('heartbeat', () => {pulse = false; $nextTick(() => {pulse=true;});})"
+                    class="user-select-none align-middle" x-data="{pulse: false, cookie_name: 'c'}"
+                    x-init="$watch('heartbeat', () => {pulse = false; $nextTick(() => {pulse=true;});}); readCookie()"
                     x-on:click="pulse = false; $nextTick(() => {pulse=true;});" :class="pulse ? 'pulse-anim' : ''"
                     style="position:absolute; width:40px; text-align:center">❤️</span></div>
+            <div class="text-secondary">
+                <div class="form-check  form-switch form-check-inline">
+                    <input class="form-check-input" type="checkbox" role="switch" id="switchEmpty" x-model="hideEmpty"
+                        x-init="$watch('hideEmpty', (v) => docCookies.setItem('hideEmpty', v, (7*24*60*60)))">
+                    <label class="form-check-label" for="switchEmpty">Hide empty servers</label>
+                </div>
+                <div class="form-check  form-switch form-check-inline">
+                    <input class="form-check-input" type="checkbox" role="switch" id="switchSound"
+                        x-model="soundEnabled"
+                        x-init="$watch('soundEnabled', (v) => docCookies.setItem('soundEnabled', v, (7*24*60*60)))">
+                    <label class="form-check-label" for="switchSound">Enable sound only for favorites</label>
+                </div>
+                <div class="form-check  form-switch form-check-inline">
+                    <input class="form-check-input" type="checkbox" role="switch" id="switchFavorites"
+                        x-model="favoritesOnTop"
+                        x-init="$watch('favoritesOnTop', (v) => docCookies.setItem('favoritesOnTop', v, (7*24*60*60)))">
+                    <label class="form-check-label" for="switchFavorites">Favorites always on top</label>
+                </div>
+            </div>
             <div class="table-responsive custom-table-responsive">
                 <table class="table custom-table">
                     <thead>
                         <tr>
-                            <th scope="col">&nbsp;</th>
-                            <th scope="col">Players</th>
-                            <th scope="col">MMR</th>
-                            <th scope="col">Name</th>
-                            <th scope="col">Map</th>
-                            <th scope="col">Ping</th>
-                            <th scope="col">Connect</th>
+                            <th scope="col" x-data="{'name': 'id'}" :class="sortKey === name ? 'sort-active' : ''"
+                                @click="setSortKey(name)">&nbsp;</th>
+                            <th scope="col" x-data="{'name': 'playersIngame'}"
+                                :class="sortKey === name ? 'sort-active' : ''" @click="setSortKey(name)">Players</th>
+                            <th scope="col" x-data="{'name': 'mmr'}" :class="sortKey === name ? 'sort-active' : ''"
+                                @click="setSortKey(name)">MMR</th>
+                            <th scope="col" x-data="{'name': 'serverName'}"
+                                :class="sortKey === name ? 'sort-active' : ''" @click="setSortKey(name)">Name</th>
+                            <th scope="col" x-data="{'name': 'mapName'}" :class="sortKey === name ? 'sort-active' : ''"
+                                @click="setSortKey(name)">Map</th>
+                            <th scope="col" x-data="{'name': 'ping'}" :class="sortKey === name ? 'sort-active' : ''"
+                                @click="setSortKey(name)">Ping</th>
+                            <th scope="col">Action</th>
                         </tr>
                     </thead>
                     <tbody>
                         <!-- begin: server card -->
-                        <template x-for="server in servers" :key="server.id">
+                        <template
+                            x-for="server in servers.filter((v) => {return filterList(v, hideEmpty);}).sort((a,b) => sortList(a, b))"
+                            :key="server.id">
                             <tr class="border-black border-bottom" scope="row"
-                                x-init="$watch('server.recentlyWentJoinable', (value, oldvalue) => onRecentlyWentJoinableChanged(value, oldvalue, $el))"
+                                x-init="$watch('server.recentlyWentJoinable', (value, oldvalue) => onRecentlyWentJoinableChanged(value, oldvalue, $el, server))"
                                 :class="server.ping >= 999 ? 'greyout' : ''"
                                 :style="server.ping >= 999 ? 'pointer-events:none' : ''">
                                 <td class="align-middle fs-4">
@@ -207,6 +241,8 @@
                                 </td>
                                 <td class="align-middle fs-4"><a
                                         :href="'steam://run/4920//+connect ' + server.hostname + ':' + server.port + '/'">🚀</a>
+                                    <a href="#" @click="setFavorite(server, !server.favorite)"
+                                        :class="server.favorite ? 'favorite' : 'not-favorite'">❤️</a>
                                 </td>
                             </tr>
                         </template>

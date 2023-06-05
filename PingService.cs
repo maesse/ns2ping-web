@@ -94,10 +94,14 @@ public class PingService : BackgroundService
             activeToken.Cancel();
         }
         lastRequest = DateTime.Now;
+
         var list = new List<ServerInfoPublic>();
         foreach (var s in watchedServers)
         {
-            list.Add(new ServerInfoPublic(s));
+            if (s.lastRequestPingTime < 999)
+            {
+                list.Add(new ServerInfoPublic(s));
+            }
         }
         return list;
     }

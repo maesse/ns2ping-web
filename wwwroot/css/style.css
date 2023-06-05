@@ -207,3 +207,75 @@ h2 {
     opacity: .2;
     border: 2px solid #007bff;
 }
+
+.greyout {
+    opacity: 0.2;
+}
+
+.custom-table tbody tr.highlight-anim td {
+    animation-name: colorfade;
+    animation-duration: 10s;
+    animation-iteration-count: 1;
+    animation-timing-function: ease-in;
+}
+
+@keyframes colorfade {
+    from {
+        background: #39303a;
+    }
+
+    to {}
+}
+
+.pulse-anim {
+    animation-name: scaleanim;
+    animation-duration: 300ms;
+    animation-iteration-count: 1;
+}
+
+@keyframes scaleanim {
+    from {
+        font-size: 125%;
+    }
+
+    to {}
+}
+
+.tiercontainer {
+    position: relative;
+    display: inline-block;
+}
+
+.tierimage {
+    margin-top: -15px;
+}
+
+.tier {
+    position: absolute;
+    z-index: 10;
+    text-align: center;
+    vertical-align: middle;
+    width: 100%;
+    height: 100%;
+    left: 0;
+    text-shadow:
+        -1px -1px 0 #000,
+        1px -1px 0 #000,
+        -1px 1px 0 #000,
+        1px 1px 0 #000;
+    display: inline-block;
+    top: 10px;
+}
+
+span.icons {
+    display: inline-block;
+    min-width: 4ch;
+}
+
+.not-favorite {
+    opacity: 0.2;
+}
+
+.sort-active {
+    text-decoration: underline;
+}
