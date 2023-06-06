@@ -14,6 +14,7 @@ public class PingService : BackgroundService
     public TimeSpan SleepTimeout = TimeSpan.FromSeconds(10);
     private CancellationTokenSource sleepToken = new CancellationTokenSource();
     private MasterServerQuery masterQuery = new MasterServerQuery();
+    private static int printCounter = 0;
     public PingService()
     {
         Init();
@@ -195,7 +196,10 @@ public class PingService : BackgroundService
                         receiveTask = client.ReceiveAsync();
                     }
 
-                    PrintServers();
+                    if (printCounter++ % 10 == 0)
+                    {
+                        PrintServers();
+                    }
                 }
             }
             catch (SocketException e)
