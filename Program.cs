@@ -28,12 +28,40 @@ app.UseStaticFiles(new StaticFileOptions()
         context.Context.Response.Headers["Feature-Policy"] = "autoplay";
     }
 });
+app.UseWebSockets();
 
 app.MapGet("/servers", () =>
 {
 
     var pingService = app.Services.GetRequiredService<PingService>();
     return pingService.GetServerInfos();
+});
+
+
+app.Use(async (context, next) =>
+{
+    if (context.Request.Path == "/ws")
+    {
+        if (context.WebSockets.IsWebSocketRequest)
+        {
+            using var webSocket = await context.WebSockets.AcceptWebSocketAsync(
+    new WebSocketAcceptContext { DangerousEnableCompression = true });
+            var socketFinishedTcs = new TaskCompletionSource<object>();
+            var pingService = app.Services.GetRequiredService<PingService>();
+            var ws = pingService.AddSocket(webSocket, socketFinishedTcs);
+            ws.Read();
+            await socketFinishedTcs.Task;
+        }
+        else
+        {
+            context.Response.StatusCode = StatusCodes.Status400BadRequest;
+        }
+    }
+    else
+    {
+        await next(context);
+    }
+
 });
 
 app.Run();

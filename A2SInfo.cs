@@ -28,12 +28,12 @@ namespace MyApp
             ReadInfo(data);
         }
 
-        public static readonly int EXT_VERSION = 0;
-        public static readonly int EXT_GAMETYPE = 1;
-        public static readonly int EXT_SPECTATORS = 11;
-        public static readonly int EXT_MAXSPECTATORS = 12;
-        public static readonly int EXT_PLAYERS_INGAME = 15;
-        public static readonly int EXT_MMR = 16;
+        public const int EXT_VERSION = 0;
+        public const int EXT_GAMETYPE = 1;
+        public const int EXT_SPECTATORS = 11;
+        public const int EXT_MAXSPECTATORS = 12;
+        public const int EXT_PLAYERS_INGAME = 15;
+        public const int EXT_MMR = 16;
 
         public int GetPlayersIngame()
         {
@@ -77,18 +77,23 @@ namespace MyApp
             return result;
         }
 
-        public void ReadInfo(byte[] data)
+        public bool ReadInfo(byte[] data)
         {
+            bool hasChange = false;
             var reader = new Reader(data);
             reader.Skip(4);
             Header = reader.ReadByte();
             Protocol = reader.ReadByte();
             Name = reader.ReadUTF8String();
+            string oldMap = Map;
             Map = reader.ReadString();
+            if (!Map.Equals(oldMap)) hasChange = true;
             Folder = reader.ReadString();
             Game = reader.ReadString();
             ID = reader.ReadShort();
+            byte oldPlayers = Players;
             Players = reader.ReadByte();
+            if (Players != oldPlayers) hasChange = true;
             MaxPlayers = reader.ReadByte();
             Bots = reader.ReadByte();
             ServerType = reader.ReadByte();
@@ -111,6 +116,18 @@ namespace MyApp
                         // Compare and overwrite
                         if (KeywordParts[i] != value)
                         {
+                            switch (i)
+                            {
+                                case EXT_GAMETYPE:
+                                case EXT_MAXSPECTATORS:
+                                case EXT_MMR:
+                                case EXT_PLAYERS_INGAME:
+                                case EXT_SPECTATORS:
+                                case EXT_VERSION:
+                                    hasChange = true;
+                                    break;
+                            }
+
                             //Console.WriteLine($"Parameter {i} changed from {KeywordParts[i]} to {value}");
                         }
                         KeywordParts[i] = value;
@@ -121,6 +138,8 @@ namespace MyApp
                     }
                 }
             }
+
+            return hasChange;
         }
 
     }

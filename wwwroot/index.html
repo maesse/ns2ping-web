@@ -11,6 +11,8 @@
         integrity="sha384-9ndCyUaIbzAi2FUVXJi0CjmCapSmO7SnpJef0486qhLnuZ2cdeRhO02iuK6FUUVM" crossorigin="anonymous">
     <link rel="stylesheet" href="css/style.css">
     <script>
+        var instance = null;
+
         function alpineInstance() {
             return {
                 title: 'NS2 Server Browser',
@@ -45,9 +47,61 @@
                         });
 
                 },
+                sendKeepAlive() {
+                    socket.send("ping");
+                },
+                connectWebsocket() {
+                    var webSocketProtocol = location.protocol == "https:" ? "wss:" : "ws:";
+                    var webSocketURI = webSocketProtocol + "//" + location.host + "/ws";
+
+                    socket = new WebSocket(webSocketURI);
+
+                    socket.onopen = function () {
+                        console.log("Connected.");
+                    };
+
+                    socket.onclose = function (event) {
+                        if (event.wasClean) {
+                            console.log('Disconnected.');
+                        } else {
+                            console.log('Connection lost.'); // for example if server processes is killed
+                        }
+                        console.log('Code: ' + event.code + '. Reason: ' + event.reason);
+                    };
+
+                    socket.onmessage = function (event) {
+                        //console.log("Data received: " + event.data);
+                        let data = JSON.parse(event.data);
+                        for (let i = 0; i < data.length; i++) {
+                            // Copy each field if it has changed
+                            let server = window.instance.servers.find(v => v.id == data[i].id);
+                            if (server) {
+                                // Update existing server
+                                for (let key in data[i]) {
+                                    if (server[key] !== data[i][key]) {
+                                        server[key] = data[i][key];
+                                    }
+                                }
+                            } else {
+                                // Add server
+                                window.instance.servers.push(data[i]);
+                            }
+                        }
+
+                        window.instance.heartbeat = !window.instance.heartbeat;
+
+                    };
+
+                    socket.onerror = function (error) {
+                        console.log("Error: " + error.message);
+                    };
+                },
                 startTimer() {
+                    instance = this;
                     this.getServers();
-                    setInterval(() => { this.getServers() }, 1000);
+                    //setInterval(() => { this.getServers() }, 1000);
+                    setInterval(() => { this.sendKeepAlive() }, 5000);
+                    this.connectWebsocket();
                 },
                 getServerIcon(server) {
                     if (server.ping >= 999) return '💀';
@@ -153,7 +207,8 @@
             <div><span class="h1" style="color: #dddddd;">NS2 Server Browser</span><span
                     class="user-select-none align-middle" x-data="{pulse: false, cookie_name: 'c'}"
                     x-init="$watch('heartbeat', () => {pulse = false; $nextTick(() => {pulse=true;});}); readCookie()"
-                    x-on:click="pulse = false; $nextTick(() => {pulse=true;});" :class="pulse ? 'pulse-anim' : ''"
+                    x-on:click="getServers(); pulse = false; $nextTick(() => {pulse=true;});"
+                    :class="pulse ? 'pulse-anim' : ''"
                     style="position:absolute; width:40px; text-align:center">❤️</span></div>
             <div class="text-secondary">
                 <div class="form-check  form-switch form-check-inline">

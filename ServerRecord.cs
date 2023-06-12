@@ -13,6 +13,7 @@ namespace MyApp
         public A2SInfo? info { get; set; }
         public IPEndPoint EndPoint;
         public int lastRequestPingTime { get; private set; }
+        public bool HasChanges { get; set; }
 
         private DateTime lastRequestTime = DateTime.Now - TimeSpan.FromSeconds(10);
         private byte[]? challenge;
@@ -151,20 +152,27 @@ namespace MyApp
                 {
                     info = new A2SInfo(data);
                     wasJoinable = IsJoinable();
+                    HasChanges = true;
                 }
                 else
                 {
-                    info.ReadInfo(data);
+                    if (info.ReadInfo(data))
+                    {
+                        HasChanges = true;
+                    }
 
                     bool newJoinable = IsJoinable();
                     if (newJoinable && !wasJoinable)
                     {
+                        HasChanges = true;
                         lastJoinable = DateTime.Now;
                         // Play sound
                         PlaySound("mixkit-long-pop-2358.wav");
                     }
                     wasJoinable = newJoinable;
                 }
+
+
             }
             else
             {

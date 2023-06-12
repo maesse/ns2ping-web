@@ -1,10 +1,37 @@
 using System.Net;
 using System.Net.Sockets;
+using System.Net.WebSockets;
+using System.Text;
 using System.Text.Json;
 using MyApp;
 
 public class PingService : BackgroundService
 {
+    public class WebsocketInstance
+    {
+        public WebSocket webSocket { get; }
+        public TaskCompletionSource<object> socketFinishedTcs { get; }
+        public DateTime lastKeepAlive { get; set; }
+        public WebsocketInstance(WebSocket webSocket, TaskCompletionSource<object> socketFinishedTcs)
+        {
+            this.webSocket = webSocket;
+            this.socketFinishedTcs = socketFinishedTcs;
+            this.lastKeepAlive = DateTime.Now;
+        }
+
+        public async Task Read()
+        {
+            while (!webSocket.CloseStatus.HasValue)
+            {
+                var buffer = new byte[128];
+                var receiveResult = await webSocket.ReceiveAsync(
+                    new ArraySegment<byte>(buffer), CancellationToken.None);
+                Console.WriteLine("Received data from websocket: " + receiveResult);
+                lastKeepAlive = DateTime.Now;
+            }
+        }
+    }
+
     public UdpClient client;
     public IPEndPoint ep;
     public List<ServerRecord> watchedServers;
@@ -15,6 +42,7 @@ public class PingService : BackgroundService
     private CancellationTokenSource sleepToken = new CancellationTokenSource();
     private MasterServerQuery masterQuery = new MasterServerQuery();
     private static int printCounter = 0;
+    private List<WebsocketInstance> webSocketList = new List<WebsocketInstance>();
     public PingService()
     {
         Init();
@@ -83,7 +111,7 @@ public class PingService : BackgroundService
         watchedServers.Add(record);
     }
 
-    public List<ServerInfoPublic> GetServerInfos()
+    private void StopSleep()
     {
         if (sleeping)
         {
@@ -95,6 +123,11 @@ public class PingService : BackgroundService
             activeToken.Cancel();
         }
         lastRequest = DateTime.Now;
+    }
+
+    public List<ServerInfoPublic> GetServerInfos()
+    {
+        StopSleep();
 
         var list = new List<ServerInfoPublic>();
         foreach (var s in watchedServers)
@@ -102,6 +135,22 @@ public class PingService : BackgroundService
             if (s.lastRequestPingTime < 999)
             {
                 list.Add(new ServerInfoPublic(s));
+            }
+        }
+        return list;
+    }
+
+    public List<ServerInfoPublic> GetServerInfosWithChanges()
+    {
+        StopSleep();
+
+        var list = new List<ServerInfoPublic>();
+        foreach (var s in watchedServers)
+        {
+            if (s.lastRequestPingTime < 999 && s.HasChanges)
+            {
+                list.Add(new ServerInfoPublic(s));
+                s.HasChanges = false;
             }
         }
         return list;
@@ -139,6 +188,8 @@ public class PingService : BackgroundService
             }
         }
         Console.WriteLine($"Added {newCount} servers to the watched server list");
+
+        // TODO: Remove servers missing from master list that also are not responding
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -192,9 +243,10 @@ public class PingService : BackgroundService
                             }
                         }
 
-
                         receiveTask = client.ReceiveAsync();
                     }
+
+                    UpdateWebsockets();
 
                     if (printCounter++ % 10 == 0)
                     {
@@ -238,6 +290,56 @@ public class PingService : BackgroundService
         running = false;
     }
 
+    private void UpdateWebsockets()
+    {
+        // Clean closed sockets
+        var cleanupList = new List<WebsocketInstance>();
+        var now = DateTime.Now;
+        foreach (var socket in webSocketList)
+        {
+            if (socket.socketFinishedTcs.Task.IsCompleted)
+            {
+                cleanupList.Add(socket);
+                continue;
+            }
+
+
+
+
+            if (now - socket.lastKeepAlive > SleepTimeout)
+            {
+                Console.WriteLine("Timeout from webSocket " + socket);
+                socket.socketFinishedTcs.SetResult(null);
+                cleanupList.Add(socket);
+            }
+        }
+        foreach (var socket in cleanupList)
+        {
+            webSocketList.Remove(socket);
+        }
+
+        if (webSocketList.Count == 0) return;
+
+        // Gather updated servers
+        var serverList = GetServerInfosWithChanges();
+        if (serverList.Count == 0) return;
+
+        // push updates to all websockets
+
+        JsonSerializerOptions options = new()
+        {
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+            PropertyNameCaseInsensitive = true
+        };
+        var payload = JsonSerializer.Serialize(serverList, options);
+        var bytes = Encoding.UTF8.GetBytes(payload);
+        var arraySegment = new ArraySegment<byte>(bytes);
+        foreach (var socket in webSocketList)
+        {
+            socket.webSocket.SendAsync(arraySegment, WebSocketMessageType.Text, true, CancellationToken.None);
+        }
+    }
+
     private void PrintServers()
     {
         //Console.Clear();
@@ -256,11 +358,19 @@ public class PingService : BackgroundService
                 Console.WriteLine($"{server.Hostname}:{server.Port} \t| Not responding");
             }
         }
+        Console.WriteLine($"Current WebSocket clients: {webSocketList.Count}");
     }
 
     private static async Task<Task> WaitAny(Task task1, Task task2)
     {
         return await Task.WhenAny(task1, task2);
+    }
+
+    internal WebsocketInstance AddSocket(WebSocket webSocket, TaskCompletionSource<object> socketFinishedTcs)
+    {
+        var ws = new WebsocketInstance(webSocket, socketFinishedTcs);
+        webSocketList.Add(ws);
+        return ws;
     }
 }
 
