@@ -67,6 +67,9 @@
                             console.log('Connection lost.'); // for example if server processes is killed
                         }
                         console.log('Code: ' + event.code + '. Reason: ' + event.reason);
+
+                        console.log('Reconnecting in 5 seconds...');
+                        setTimeout(() => { this.connectWebsocket() }, 5000);
                     };
 
                     socket.onmessage = function (event) {
