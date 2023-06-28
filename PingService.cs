@@ -26,11 +26,13 @@ public class PingService : BackgroundService
                 var buffer = new byte[128];
                 var receiveResult = await webSocket.ReceiveAsync(
                     new ArraySegment<byte>(buffer), CancellationToken.None);
-                Console.WriteLine("Received data from websocket: " + receiveResult);
+                //Console.WriteLine("Received data from websocket: " + receiveResult);
                 lastKeepAlive = DateTime.Now;
             }
         }
     }
+
+    private readonly ILogger<PingService> _logger;
 
     public UdpClient client;
     public IPEndPoint ep;
@@ -39,12 +41,14 @@ public class PingService : BackgroundService
     public bool sleeping = false;
     private DateTime lastRequest = DateTime.Now;
     public TimeSpan SleepTimeout = TimeSpan.FromSeconds(10);
+    public TimeSpan WebsocketTimeout = TimeSpan.FromSeconds(60);
     private CancellationTokenSource sleepToken = new CancellationTokenSource();
     private MasterServerQuery masterQuery = new MasterServerQuery();
     private static int printCounter = 0;
     private List<WebsocketInstance> webSocketList = new List<WebsocketInstance>();
-    public PingService()
+    public PingService(ILogger<PingService> logger)
     {
+        _logger = logger;
         Init();
     }
 
@@ -64,26 +68,25 @@ public class PingService : BackgroundService
         {
             var configText = File.ReadAllText("config/config.json");
             var config = JsonSerializer.Deserialize<List<ServerDescription>>(configText);
-            Console.WriteLine("Reading Config");
+            _logger.LogInformation("Reading config");
             foreach (var descr in config)
             {
-                AddServer(new ServerRecord(descr.Hostname, descr.MaxJoinableSpec));
+                AddServer(new ServerRecord(_logger, descr.Hostname, descr.MaxJoinableSpec));
             }
         }
         catch (Exception ex)
         {
-            Console.WriteLine("Exception while trying to read config");
-            Console.WriteLine(ex);
+            _logger.LogError(ex, "Exception while trying to read config");
             loadFail = true;
         }
 
         if (loadFail)
         {
-            Console.WriteLine("Loading default config");
-            AddServer(new ServerRecord("136.243.135.61:27015")); // BAD #1
-            AddServer(new ServerRecord("136.243.135.61:27019")); // BAD #2
-            AddServer(new ServerRecord("136.243.135.61:27065")); // BAD #3
-            AddServer(new ServerRecord("157.90.129.121:28315", 5)); // TTO
+            _logger.LogInformation("Loading default config");
+            AddServer(new ServerRecord(_logger, "136.243.135.61:27015")); // BAD #1
+            AddServer(new ServerRecord(_logger, "136.243.135.61:27019")); // BAD #2
+            AddServer(new ServerRecord(_logger, "136.243.135.61:27065")); // BAD #3
+            AddServer(new ServerRecord(_logger, "157.90.129.121:28315", 5)); // TTO
 
             WriteConfig();
         }
@@ -91,7 +94,7 @@ public class PingService : BackgroundService
 
     private void WriteConfig()
     {
-        Console.WriteLine("Writing config");
+        _logger.LogInformation("Writing config");
         var descList = new List<ServerDescription>();
         foreach (var server in watchedServers)
         {
@@ -115,11 +118,13 @@ public class PingService : BackgroundService
     {
         if (sleeping)
         {
-            Console.WriteLine("PingService waking up!");
+            _logger.LogDebug("PingService waking up!");
             var activeToken = sleepToken;
             sleeping = false;
             // Reset Token
             sleepToken = new CancellationTokenSource();
+            client.Close();
+            client = new UdpClient(ep);
             activeToken.Cancel();
         }
         lastRequest = DateTime.Now;
@@ -183,11 +188,11 @@ public class PingService : BackgroundService
             {
                 // Decrement port by one since we are using the game server port here, not the query port
                 var gameaddr = new IPEndPoint(addr.Address, addr.Port - 1);
-                watchedServers.Add(new ServerRecord(gameaddr.ToString()));
+                watchedServers.Add(new ServerRecord(_logger, gameaddr.ToString()));
                 newCount++;
             }
         }
-        Console.WriteLine($"Added {newCount} servers to the watched server list");
+        _logger.LogInformation($"Added {newCount} servers to the watched server list");
 
         // TODO: Remove servers missing from master list that also are not responding
     }
@@ -213,20 +218,28 @@ public class PingService : BackgroundService
                     {
                         delayTime = 1000 * 60 * 24;
                         sleeping = true;
-                        sleepToken = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
-                        Console.WriteLine("PingService going to sleep");
+                        //sleepToken = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
+                        _logger.LogDebug("PingService going to sleep");
                     }
 
-                    var delayTask = Task.Delay(delayTime, sleepToken.Token);
+                    var delayTask = Task.Delay(delayTime, CancellationTokenSource.CreateLinkedTokenSource(sleepToken.Token, stoppingToken).Token);
+                    if (receiveTask.IsFaulted)
+                    {
+                        _logger.LogDebug("ReceiveTask faulted!");
+                        Console.WriteLine(receiveTask.Exception);
+                    }
                     if (receiveTask.IsCompleted)
                     {
+                        _logger.LogDebug("Does this ever run?");
                         receiveTask = client.ReceiveAsync();
                     }
+
 
                     while (await Task.WhenAny(delayTask, receiveTask) == receiveTask)
                     {
                         // Handle packet response
                         var result = receiveTask.Result;
+                        _logger.LogTrace($"Handling UDP response from {result.RemoteEndPoint}");
                         if (IPEndPoint.Equals(result.RemoteEndPoint, masterQuery.EndPoint))
                         {
                             if (masterQuery.HandleResponse(result.Buffer, client))
@@ -245,6 +258,11 @@ public class PingService : BackgroundService
 
                         receiveTask = client.ReceiveAsync();
                     }
+                    if (delayTask.IsCanceled)
+                    {
+                        _logger.LogDebug("DelayTask was cancelled!");
+                        receiveTask = client.ReceiveAsync();
+                    }
 
                     UpdateWebsockets();
 
@@ -258,35 +276,32 @@ public class PingService : BackgroundService
             {
                 if (e.ErrorCode == 10055)
                 {
-                    Console.WriteLine("Woken from sleep? Waiting 3000ms before retrying");
+                    _logger.LogInformation("Woken from sleep? Waiting 3000ms before retrying");
                     Thread.Sleep(3000);
                 }
-                Console.WriteLine("SocketException, trying to restart");
-                Console.WriteLine(e);
+                _logger.LogError(e, "SocketException, trying to restart");
                 allowNewRun = true;
             }
             catch (ObjectDisposedException e)
             {
-                Console.WriteLine("ObjectDisposedException, trying to restart");
-                Console.WriteLine(e);
+                _logger.LogError(e, "ObjectDisposedException, trying to restart");
                 allowNewRun = true;
             }
             catch (Exception e)
             {
-                Console.WriteLine("Other exception -- exiting");
-                Console.WriteLine(e);
+                _logger.LogError(e, "Other exception -- exiting");
                 running = false;
                 throw;
             }
 
             if (allowNewRun)
             {
-                Console.WriteLine("Reinitializing PingService");
+                _logger.LogDebug("Reinitializing PingService");
                 Init();
             }
         } while (allowNewRun);
 
-        Console.WriteLine("Exiting PingService");
+        _logger.LogDebug("Exiting PingService");
         running = false;
     }
 
@@ -303,12 +318,9 @@ public class PingService : BackgroundService
                 continue;
             }
 
-
-
-
-            if (now - socket.lastKeepAlive > SleepTimeout)
+            if (now - socket.lastKeepAlive > WebsocketTimeout)
             {
-                Console.WriteLine("Timeout from webSocket " + socket);
+                _logger.LogInformation("Timeout from webSocket " + socket.webSocket);
                 socket.socketFinishedTcs.SetResult(null);
                 cleanupList.Add(socket);
             }
@@ -343,22 +355,22 @@ public class PingService : BackgroundService
     private void PrintServers()
     {
         //Console.Clear();
-        Console.WriteLine("Servers:");
-        Console.WriteLine("========");
+        _logger.LogInformation("Servers:");
+        _logger.LogInformation("========");
+        string serverInfo = "";
         foreach (var server in watchedServers)
         {
             if (server.lastRequestPingTime < 999 && server.info != null)
             {
-                Console.WriteLine($"{(server.IsJoinable() ? '#' : ' '),1}{(server.RecentlyWentJoinable() ? '!' : ' '),1} | {server.info.GetPlayersIngame(),2}/{server.info.MaxPlayers} ({server.info.GetSpectators()}/{server.info.GetMaxSpectators()}) | MMR {server.info.GetMMR()} \t| {server.info.Map,-20} | {server.Hostname,1}:{server.Port}\t| {server.info.Name}");
-
-                //Console.WriteLine(server.info.Keywords);
+                serverInfo += $"{(server.IsJoinable() ? '#' : ' '),1}{(server.RecentlyWentJoinable() ? '!' : ' '),1} | {server.info.GetPlayersIngame(),2}/{server.info.MaxPlayers} ({server.info.GetSpectators()}/{server.info.GetMaxSpectators()}) | MMR {server.info.GetMMR()} \t| {server.info.Map,-20} | {server.Hostname,1}:{server.Port}\t| {server.info.Name}\n";
             }
             else
             {
-                Console.WriteLine($"{server.Hostname}:{server.Port} \t| Not responding");
+                serverInfo += $"{server.Hostname}:{server.Port} \t| Not responding\n";
             }
         }
-        Console.WriteLine($"Current WebSocket clients: {webSocketList.Count}");
+        _logger.LogInformation(serverInfo);
+        _logger.LogInformation($"Current WebSocket clients: {webSocketList.Count}");
     }
 
     private static async Task<Task> WaitAny(Task task1, Task task2)

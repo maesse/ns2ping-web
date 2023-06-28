@@ -21,8 +21,9 @@ namespace MyApp
         private bool wasJoinable = false;
         private int? maxJoinableSpec = null;
         private DateTime lastJoinable = DateTime.Now - TimeSpan.FromSeconds(10);
+        private readonly ILogger _logger;
 
-        public ServerRecord(string host, int? specLimit) : this(host)
+        public ServerRecord(ILogger logger, string host, int? specLimit) : this(logger, host)
         {
             maxJoinableSpec = specLimit;
         }
@@ -35,8 +36,9 @@ namespace MyApp
             return desc;
         }
 
-        public ServerRecord(string host)
+        public ServerRecord(ILogger logger, string host)
         {
+            _logger = logger;
             ID = ID_COUNTER++;
             Hostname = host;
             if (host.Contains(":"))
@@ -77,6 +79,7 @@ namespace MyApp
 
             lastRequestTime = DateTime.Now;
             requestInFlight = true;
+            _logger.LogDebug($"Sending InfoRequest to server {EndPoint}");
         }
 
         public bool IsJoinable()
@@ -132,7 +135,7 @@ namespace MyApp
         {
             if (!requestInFlight)
             {
-                Console.WriteLine("Received response, but there is no request in flight");
+                _logger.LogWarning("Received response, but there is no request in flight");
                 return;
             }
 
@@ -142,6 +145,7 @@ namespace MyApp
             if (data[4] == 'A')
             {
                 // Resend request with challenge
+                _logger.LogDebug($"Received new challenge for server {EndPoint}");
                 challenge = new byte[4];
                 Buffer.BlockCopy(data, 5, challenge, 0, 4);
                 SendInfoRequest(client);
@@ -176,8 +180,13 @@ namespace MyApp
             }
             else
             {
-                Console.WriteLine("Invalid response..");
+                _logger.LogWarning("Invalid response..");
             }
+        }
+
+        internal void ResetChallenge()
+        {
+            challenge = null;
         }
     }
 }
