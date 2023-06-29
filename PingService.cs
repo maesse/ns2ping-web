@@ -46,6 +46,7 @@ public class PingService : BackgroundService
     private MasterServerQuery masterQuery = new MasterServerQuery();
     private static int printCounter = 0;
     private List<WebsocketInstance> webSocketList = new List<WebsocketInstance>();
+    private readonly object webSocketListLock = new object();
     public PingService(ILogger<PingService> logger)
     {
         _logger = logger;
@@ -109,7 +110,7 @@ public class PingService : BackgroundService
         File.WriteAllText("config/config.json", json);
     }
 
-    public void AddServer(ServerRecord record)
+    private void AddServer(ServerRecord record)
     {
         watchedServers.Add(record);
     }
@@ -118,7 +119,7 @@ public class PingService : BackgroundService
     {
         if (sleeping)
         {
-            _logger.LogDebug("PingService waking up!");
+            _logger.LogInformation("PingService waking up!");
             var activeToken = sleepToken;
             sleeping = false;
             // Reset Token
@@ -145,7 +146,7 @@ public class PingService : BackgroundService
         return list;
     }
 
-    public List<ServerInfoPublic> GetServerInfosWithChanges()
+    private List<ServerInfoPublic> GetServerInfosWithChanges()
     {
         StopSleep();
 
@@ -161,7 +162,7 @@ public class PingService : BackgroundService
         return list;
     }
 
-    public void UpdateServers()
+    private void UpdateServers()
     {
         if (masterQuery.ReadyForRefresh())
         {
@@ -219,7 +220,7 @@ public class PingService : BackgroundService
                         delayTime = 1000 * 60 * 24;
                         sleeping = true;
                         //sleepToken = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
-                        _logger.LogDebug("PingService going to sleep");
+                        _logger.LogInformation("PingService going to sleep");
                     }
 
                     var delayTask = Task.Delay(delayTime, CancellationTokenSource.CreateLinkedTokenSource(sleepToken.Token, stoppingToken).Token);
@@ -258,6 +259,7 @@ public class PingService : BackgroundService
 
                         receiveTask = client.ReceiveAsync();
                     }
+
                     if (delayTask.IsCanceled)
                     {
                         _logger.LogDebug("DelayTask was cancelled!");
@@ -307,30 +309,33 @@ public class PingService : BackgroundService
 
     private void UpdateWebsockets()
     {
-        // Clean closed sockets
-        var cleanupList = new List<WebsocketInstance>();
-        var now = DateTime.Now;
-        foreach (var socket in webSocketList)
+        lock (webSocketListLock)
         {
-            if (socket.socketFinishedTcs.Task.IsCompleted)
+            // Clean closed sockets
+            var cleanupList = new List<WebsocketInstance>();
+            var now = DateTime.Now;
+            foreach (var socket in webSocketList)
             {
-                cleanupList.Add(socket);
-                continue;
+                if (socket.socketFinishedTcs.Task.IsCompleted)
+                {
+                    cleanupList.Add(socket);
+                    continue;
+                }
+
+                if (now - socket.lastKeepAlive > WebsocketTimeout)
+                {
+                    _logger.LogInformation("Timeout from webSocket " + socket.webSocket);
+                    socket.socketFinishedTcs.SetResult(null);
+                    cleanupList.Add(socket);
+                }
+            }
+            foreach (var socket in cleanupList)
+            {
+                webSocketList.Remove(socket);
             }
 
-            if (now - socket.lastKeepAlive > WebsocketTimeout)
-            {
-                _logger.LogInformation("Timeout from webSocket " + socket.webSocket);
-                socket.socketFinishedTcs.SetResult(null);
-                cleanupList.Add(socket);
-            }
+            if (webSocketList.Count == 0) return;
         }
-        foreach (var socket in cleanupList)
-        {
-            webSocketList.Remove(socket);
-        }
-
-        if (webSocketList.Count == 0) return;
 
         // Gather updated servers
         var serverList = GetServerInfosWithChanges();
@@ -346,18 +351,18 @@ public class PingService : BackgroundService
         var payload = JsonSerializer.Serialize(serverList, options);
         var bytes = Encoding.UTF8.GetBytes(payload);
         var arraySegment = new ArraySegment<byte>(bytes);
-        foreach (var socket in webSocketList)
+        lock (webSocketListLock)
         {
-            socket.webSocket.SendAsync(arraySegment, WebSocketMessageType.Text, true, CancellationToken.None);
+            foreach (var socket in webSocketList)
+            {
+                socket.webSocket.SendAsync(arraySegment, WebSocketMessageType.Text, true, CancellationToken.None);
+            }
         }
     }
 
     private void PrintServers()
     {
-        //Console.Clear();
-        _logger.LogInformation("Servers:");
-        _logger.LogInformation("========");
-        string serverInfo = "";
+        string serverInfo = "Servers:\n========\n";
         foreach (var server in watchedServers)
         {
             if (server.lastRequestPingTime < 999 && server.info != null)
@@ -370,7 +375,10 @@ public class PingService : BackgroundService
             }
         }
         _logger.LogInformation(serverInfo);
-        _logger.LogInformation($"Current WebSocket clients: {webSocketList.Count}");
+        lock (webSocketListLock)
+        {
+            _logger.LogInformation($"Current WebSocket clients: {webSocketList.Count}");
+        }
     }
 
     private static async Task<Task> WaitAny(Task task1, Task task2)
@@ -381,7 +389,10 @@ public class PingService : BackgroundService
     internal WebsocketInstance AddSocket(WebSocket webSocket, TaskCompletionSource<object> socketFinishedTcs)
     {
         var ws = new WebsocketInstance(webSocket, socketFinishedTcs);
-        webSocketList.Add(ws);
+        lock (webSocketListLock)
+        {
+            webSocketList.Add(ws);
+        }
         return ws;
     }
 }
