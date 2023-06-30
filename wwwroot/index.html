@@ -69,6 +69,7 @@
                         console.log('Code: ' + event.code + '. Reason: ' + event.reason);
 
                         console.log('Reconnecting in 5 seconds...');
+                        window.instance.getServers(); // Grab fresh server list now since the websocket connection only receives delta updates
                         setTimeout(() => { window.instance.connectWebsocket() }, 5000);
                     };
 

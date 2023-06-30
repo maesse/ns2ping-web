@@ -59,7 +59,7 @@ public class PingService : BackgroundService
         ep = new IPEndPoint(IPAddress.Any, 0);
         client = new UdpClient(ep);
 
-        ReadConfig();
+        //ReadConfig();
     }
 
     private void ReadConfig()
