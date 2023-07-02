@@ -1,6 +1,6 @@
 body {
     font-family: "Roboto", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
-    background-color: #19191d;
+    background-color: #181820;
     font-weight: 300;
 }
 
@@ -36,7 +36,38 @@ a:hover {
 }
 
 .content {
-    padding: 7rem 0;
+    padding: 1rem 0;
+
+}
+
+div.container div.header {
+    display: flex;
+    background-color: #1c1b22;
+    margin: 10px;
+    box-shadow: 0px 3px 10px #0a0a0d;
+    padding-right: 0px;
+}
+
+div.header div.options-block {
+    margin-left: auto;
+    background-color: #15151a;
+    padding-left: 2em;
+
+    padding-bottom: 0.5em;
+    padding-top: 0.5em;
+    border-image: linear-gradient(to right, #070709, #15151a) 1 100%;
+    border-left-width: 6px;
+    border-left-style: solid;
+}
+
+div.header div.options-block div:first-child {
+
+    color: #b7b7b7;
+}
+
+.title-block {
+    margin-top: 1em;
+
 }
 
 h2 {
@@ -46,22 +77,33 @@ h2 {
 
 .custom-table {
     min-width: 900px;
+    box-shadow: 0px 3px 10px #0a0a0d;
+    overflow: visible !important;
+}
+
+.custom-table thead tr th {
+    background-color: #1e1e24;
+}
+
+div.container div {
+    padding-right: 10px;
+    padding-left: 10px;
 }
 
 .custom-table thead tr,
 .custom-table thead th {
     border-top: none;
-    border-bottom: none !important;
-    color: #fff;
+    border-bottom: 3px solid #0d0d11;
+    color: #d5d0cd;
 }
 
 .custom-table tbody th,
 .custom-table tbody td {
-    color: #777;
     font-weight: 400;
     padding-bottom: 20px;
     padding-top: 20px;
     font-weight: 300;
+    color: #d5d5d5;
 }
 
 .custom-table tbody th small,
@@ -87,9 +129,9 @@ h2 {
 .custom-table tbody tr td {
     background: #25252b;
     border: none;
-    -webkit-transition: .3s all ease;
-    -o-transition: .3s all ease;
-    transition: .3s all ease;
+    -webkit-transition: .15s all ease;
+    -o-transition: .15s all ease;
+    transition: .15s all ease;
 }
 
 .custom-table tbody tr th a,
@@ -131,100 +173,26 @@ h2 {
     color: #fff;
 }
 
-/* Custom Checkbox */
-.control {
-    display: block;
-    position: relative;
-    margin-bottom: 25px;
-    cursor: pointer;
-    font-size: 18px;
-}
-
-.control input {
-    position: absolute;
-    z-index: -1;
-    opacity: 0;
-}
-
-.control__indicator {
-    position: absolute;
-    top: 2px;
-    left: 0;
-    height: 20px;
-    width: 20px;
-    border-radius: 4px;
-    border: 2px solid #3f3f47;
-    background: transparent;
-}
-
-.control--radio .control__indicator {
-    border-radius: 50%;
-}
-
-.control:hover input~.control__indicator,
-.control input:focus~.control__indicator {
-    border: 2px solid #007bff;
-}
-
-.control input:checked~.control__indicator {
-    border: 2px solid #007bff;
-    background: #007bff;
-}
-
-.control input:disabled~.control__indicator {
-    background: #e6e6e6;
-    opacity: 0.6;
-    pointer-events: none;
-    border: 2px solid #ccc;
-}
-
-.control__indicator:after {
-    font-family: 'icomoon';
-    content: '\e5ca';
-    position: absolute;
-    display: none;
-}
-
-.control input:checked~.control__indicator:after {
-    display: block;
-    color: #fff;
-}
-
-.control--checkbox .control__indicator:after {
-    top: 50%;
-    left: 50%;
-    -webkit-transform: translate(-50%, -52%);
-    -ms-transform: translate(-50%, -52%);
-    transform: translate(-50%, -52%);
-}
-
-.control--checkbox input:disabled~.control__indicator:after {
-    border-color: #7b7b7b;
-}
-
-.control--checkbox input:disabled:checked~.control__indicator {
-    background-color: #007bff;
-    opacity: .2;
-    border: 2px solid #007bff;
-}
-
 .greyout {
     opacity: 0.2;
 }
 
-.custom-table tbody tr.highlight-anim td {
+.custom-table tbody tr.highlight-anim td:first-child {
     animation-name: colorfade;
-    animation-duration: 10s;
+    animation-duration: 15s;
     animation-iteration-count: 1;
     animation-timing-function: ease-in;
 }
 
 @keyframes colorfade {
     from {
-        background: #39303a;
+        /*background: #39303a;*/
+        box-shadow: inset 10px 0 5px -5px rgba(198, 5, 5, 1);
     }
 
-    to {}
+    to {
+        box-shadow: inset 5px 0 5px -5px rgba(198, 5, 5, 0);
+    }
 }
 
 .pulse-anim {
@@ -241,13 +209,78 @@ h2 {
     to {}
 }
 
+.form-check-input:checked {
+    background-color: #25252b;
+    border-color: #333;
+}
+
+.form-check-input:focus {
+    border-color: #25252b;
+    outline: 0;
+    box-shadow: 0 0 0 .25rem rgb(21, 20, 20);
+}
+
+.playercount {
+    display: inline-block;
+    width: 100%;
+    pointer-events: none;
+    border-radius: 10px;
+    background: #14181E;
+    text-align: center;
+    border-bottom-color: #663431;
+    border-bottom-width: 2px;
+    border-bottom-style: solid;
+    white-space: nowrap;
+    padding: 3px;
+}
+
+/* Tooltip text */
+.tooltip .tooltiptext {
+    visibility: hidden;
+    width: 120px;
+    background-color: black;
+    color: #fff;
+    text-align: center;
+    padding: 5px 0;
+    border-radius: 6px;
+
+    /* Position the tooltip text - see examples below! */
+    position: absolute;
+    z-index: 1;
+}
+
+/* Show the tooltip text when you mouse over the tooltip container */
+.tooltip:hover .tooltiptext {
+    visibility: visible;
+}
+
+.playercount-header {
+    text-align: center;
+}
+
+.sortable {
+    cursor: pointer;
+}
+
+.sortable:hover {
+    text-decoration: underline;
+}
+
+.mmr-header {
+    text-align: center;
+}
+
 .tiercontainer {
     position: relative;
     display: inline-block;
+    width: 100%;
 }
 
 .tierimage {
     margin-top: -15px;
+    margin-left: auto;
+    margin-right: auto;
+    display: block;
 }
 
 .tier {
@@ -267,13 +300,37 @@ h2 {
     top: 10px;
 }
 
+.footer {
+    color: #646464;
+}
+
 span.icons {
     display: inline-block;
     min-width: 4ch;
+    cursor: default;
 }
 
-.not-favorite {
+a.not-favorite {
     opacity: 0.2;
+}
+
+.divider-text {
+    font-weight: lighter;
+    color: #939393;
+}
+
+.custom-table tbody tr.favoriterow td {
+    background: #332c2c;
+}
+
+div .custom-table tbody tr.favoriterow:first-child {
+    margin: 10px;
+    color: #123123;
+}
+
+tr.favoriterow:last-of-type {
+    margin: 10px;
+    color: #123123;
 }
 
 .sort-active {
