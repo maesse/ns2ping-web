@@ -13,6 +13,15 @@
     <script>
         var instance = null;
 
+        function getFlagEmoji(countryCode) {
+            const codePoints = countryCode
+                .toUpperCase()
+                .split('')
+                .map(char => 127397 + char.charCodeAt());
+            return String.fromCodePoint(...codePoints);
+        }
+
+
         function alpineInstance() {
             return {
                 title: 'NS2 Server Browser',
@@ -24,6 +33,7 @@
                 favoritesOnTop: true,
                 sortKey: 'id',
                 sortInverse: false,
+                showPing: false,
                 servers: [],
                 getServers() {
                     fetch('/servers')
@@ -161,6 +171,9 @@
                     server.favorite = value;
                     docCookies.setItem(server.hostname + ':' + server.port, value, (7 * 24 * 60 * 60));
                 },
+                getTotalPlayers(servers) {
+                    return servers.map(a => a.playersIngame + a.spectators).reduce((a, b) => a + b, 0);
+                },
                 sortList(a, b) {
                     let res = 0;
                     if (a.favorite === b.favorite || !this.favoritesOnTop) {
@@ -245,6 +258,9 @@
                     <!-- end: options panel -->
                 </div>
             </div>
+            <div class="status-info">
+                Active players: <span x-text="getTotalPlayers(servers)"></span>
+            </div>
             <div class="table-responsive custom-table-responsive">
                 <table class="table custom-table">
                     <thead>
@@ -261,9 +277,10 @@
                                 class="sortable">Name</th>
                             <th scope="col" x-data="{'name': 'mapName'}" :class="sortKey === name ? 'sort-active' : ''"
                                 @click="setSortKey(name)" class="sortable">Map</th>
-                            <th scope="col" x-data="{'name': 'ping'}" :class="sortKey === name ? 'sort-active' : ''"
-                                @click="setSortKey(name)" class="sortable">Ping</th>
-                            <th scope="col" style="pointer-events:none">Action</th>
+                            <th scope="col" x-data="{'name': 'ping'}"
+                                :class="[sortKey === name ? 'sort-active' : '', showPing ? '' : 'ping-hidden']"
+                                @click="setSortKey(name)" class="sortable">&nbsp;</th>
+                            <th scope="col" style="pointer-events:none">Actions</th>
                         </tr>
                         <!-- end: server header -->
                     </thead>
@@ -304,12 +321,14 @@
                                         <span class="tier" x-text="server.mmr" style="pointer-events:none"></span>
                                     </div>
                                 </td>
-                                <td class="align-middle"><span class="fs-4" x-text="server.serverName"
-                                        style="pointer-events:none"></span></td>
+                                <td class="align-middle"><span x-text="getFlagEmoji(server.countryCode)"
+                                        x-bind:title="'Ping (from EU): ' + server.ping"></span> <span class="servername"
+                                        x-text="server.serverName" style="pointer-events:none"></span></td>
                                 <td class="align-middle"><span class="text-uppercase" x-text="server.mapName"
                                         style="pointer-events:none"></span>
                                 </td>
-                                <td class="align-middle"><span x-text="server.ping" style="pointer-events:none"></span>
+                                <td class="align-middle" :class="showPing ? '' : 'ping-hidden'"><span
+                                        x-text="server.ping" style="pointer-events:none"></span>
                                 </td>
                                 <td class="align-middle fs-4"><a
                                         :href="'steam://run/4920//+connect ' + server.hostname + ':' + server.port + '/'"

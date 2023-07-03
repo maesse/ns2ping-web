@@ -15,6 +15,8 @@ public class ServerInfoPublic
     public int Port { get; private set; }
     public string? ServerName { get; private set; }
     public int Ping { get; private set; }
+    public string CountryCode { get; private set; }
+    public string CountryFlag { get; private set; }
 
     public ServerInfoPublic(ServerRecord record)
     {
@@ -24,6 +26,8 @@ public class ServerInfoPublic
         Hostname = record.Hostname;
         Port = record.Port;
         Ping = record.lastRequestPingTime;
+        CountryCode = record.CountryCode;
+        CountryFlag = record.CountryImg;
         if (record.info != null)
         {
             PlayersIngame = record.info.GetPlayersIngame();

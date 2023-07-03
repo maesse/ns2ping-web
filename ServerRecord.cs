@@ -14,6 +14,8 @@ namespace MyApp
         public IPEndPoint EndPoint;
         public int lastRequestPingTime { get; private set; }
         public bool HasChanges { get; set; }
+        public string CountryCode { get; set; }
+        public string CountryImg { get; set; }
 
         private DateTime lastRequestTime = DateTime.Now - TimeSpan.FromSeconds(10);
         private byte[]? challenge;
@@ -58,6 +60,29 @@ namespace MyApp
 
             EndPoint = new IPEndPoint(IPAddress.Parse(Hostname), Port + 1);
             lastRequestPingTime = 999;
+
+            GetCountryInformation();
+        }
+
+        private class GeoInfo
+        {
+            public string ip { get; set; }
+            public string country_flag { get; set; }
+            public string country_code2 { get; set; }
+        }
+
+        private async void GetCountryInformation()
+        {
+            using (var client = new HttpClient())
+            {
+                string geoUrl = $"https://api.ipgeolocation.io/ipgeo?apiKey=c22a8099ac814abc8bb283fafe74a233&fields=country_flag,country_code2&ip={Hostname}";
+                var resp = await client.GetFromJsonAsync<GeoInfo>(geoUrl);
+                if (resp != null)
+                {
+                    CountryCode = resp.country_code2;
+                    CountryImg = resp.country_flag;
+                }
+            }
         }
 
         public void SendInfoRequest(UdpClient client)
