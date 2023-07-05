@@ -54,7 +54,7 @@ h2 {
     background-color: #1e1e24;
 }
 
-div.container div {
+div.container>div {
     padding-right: 10px;
     padding-left: 10px;
 }
@@ -155,9 +155,25 @@ div.container div {
     margin-top: 1em;
 }
 
+.header-title {
+    text-shadow: 0px 3px 0px #180c0b;
+}
+
+.custom-table tbody tr td.highlight-column,
+.custom-table tbody tr.favoriterow td.highlight-column,
+.custom-table thead tr th.highlight-column {
+    width: 10px;
+    padding: 0px;
+}
+
+.custom-table tbody tr.favoriterow td.highlight-cell,
+.custom-table tbody tr td.highlight-cell {
+    background-color: #f00606;
+}
+
 div.container div.header {
     display: flex;
-    background-color: #261d1c;
+    background-color: #2e2e3a;
     margin: 10px;
     margin-bottom: 0px;
     box-shadow: 0px 3px 10px #0a0a0d;
@@ -327,9 +343,25 @@ div.options-block label:hover {
     top: 10px;
 }
 
+.custom-table tbody tr td.status-cell,
+.custom-table thead tr th.status-cell {
+    padding-right: 0px;
+    padding-left: 0px;
+}
+
+.status-heart {
+    position: absolute;
+    width: 40px;
+    text-align: center;
+}
+
+.status-heart-disc {
+    filter: grayscale();
+}
+
 span.icons {
     display: inline-block;
-    min-width: 4ch;
+    min-width: 5ch;
     cursor: default;
 }
 

@@ -189,7 +189,15 @@ public class PingService : BackgroundService
             {
                 // Decrement port by one since we are using the game server port here, not the query port
                 var gameaddr = new IPEndPoint(addr.Address, addr.Port - 1);
-                watchedServers.Add(new ServerRecord(_logger, gameaddr.ToString()));
+                if (gameaddr.ToString().Equals("157.90.129.121:28315"))
+                {
+                    // Special case 5 max spec for TTO
+                    watchedServers.Add(new ServerRecord(_logger, gameaddr.ToString(), 5));
+                }
+                else
+                {
+                    watchedServers.Add(new ServerRecord(_logger, gameaddr.ToString()));
+                }
                 newCount++;
             }
         }

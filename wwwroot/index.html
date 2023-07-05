@@ -21,7 +21,6 @@
             return String.fromCodePoint(...codePoints);
         }
 
-
         function alpineInstance() {
             return {
                 title: 'NS2 Server Browser',
@@ -34,7 +33,9 @@
                 sortKey: 'id',
                 sortInverse: false,
                 showPing: false,
+                connected: false,
                 servers: [],
+                currenttime: Math.floor(Date.now() / 1000),
                 getServers() {
                     fetch('/servers')
                         .then(response => response.json())
@@ -68,6 +69,7 @@
 
                     socket.onopen = function () {
                         console.log("WebSocket connected.");
+                        window.instance.connected = true;
                     };
 
                     socket.onclose = function (event) {
@@ -76,6 +78,7 @@
                         } else {
                             console.log('WebSocket connection lost.'); // for example if server processes is killed
                         }
+                        window.instance.connected = false;
                         console.log('Code: ' + event.code + '. Reason: ' + event.reason);
 
                         console.log('Reconnecting in 5 seconds...');
@@ -115,6 +118,7 @@
                     this.getServers();
                     setInterval(() => { this.sendKeepAlive() }, 5000);
                     this.connectWebsocket();
+                    setInterval(() => { this.currenttime = this.currenttime + 1; }, 1000);
                 },
                 getServerIcon(server) {
                     if (server.ping >= 999) return '<span title="Server not responding">💀</span>';
@@ -134,15 +138,17 @@
                 },
                 onRecentlyWentJoinableChanged(value, oldvalue, el, server) {
                     if (value && (value != oldvalue)) {
-                        el.classList.remove('highlight-anim');
-                        void el.offsetWidth;
-                        el.classList.add('highlight-anim');
-                        if (value === true && oldvalue === false) {
-                            if (this.soundEnabled && server.favorite) {
-                                this.playSound();
-                            }
+                        //el.classList.remove('highlight-anim');
+                        //void el.offsetWidth;
+                        //el.classList.add('highlight-anim');
+                        if (this.soundEnabled && server.favorite) {
+                            this.playSound();
+                        }
+                        if (server.favorite) {
+                            return true;
                         }
                     }
+                    return false;
                 },
                 filterList(item, hideEmpty) {
                     if (hideEmpty && item.playersIngame === 0) return false;
@@ -179,18 +185,21 @@
                     if (a.favorite === b.favorite || !this.favoritesOnTop) {
 
                         if (this.sortKey === 'mmr') {
-                            if (a[this.sortKey] === b[this.sortKey]) res = a[this.sortKey].id - b[this.sortKey].id;
+                            if (a[this.sortKey] === b[this.sortKey]) res = a.id - b.id;
                             else if (a[this.sortKey] === 'N/A') res = -1;
                             else if (b[this.sortKey] === 'N/A') res = 1;
                             else res = a[this.sortKey] - b[this.sortKey];
                         }
-                        else if (this.sortKey != 'ping' && typeof b[this.sortKey] == 'string') {
+                        else if (this.sortKey === 'playersIngame') {
+                            res = (a.playersIngame + a.spectators) - (b.playersIngame + b.spectators);
+                        } else if (this.sortKey != 'ping' && typeof b[this.sortKey] == 'string') {
                             if (a[this.sortKey] > b[this.sortKey]) res = 1;
                             else if (a[this.sortKey] < b[this.sortKey]) res = -1;
                             else res = 0;
                         } else {
                             res = a[this.sortKey] - b[this.sortKey];
                         }
+                        if (res === 0) res = a.id - b.id;
                     }
                     else if (a.favorite) return -1;
                     else if (b.favorite) return 1;
@@ -222,14 +231,15 @@
         <div class="container" x-data="alpineInstance()" x-init="startTimer()" data-bs-theme="dark">
             <div class="header">
                 <div class="title-block text-secondary">
-                    <span class="h1" style="color: #dddddd;">NS2 Server Browser</span><span
-                        class="user-select-none align-middle" x-data="{pulse: false, cookie_name: 'c'}"
+                    <span class="h1 header-title" style="color: #dddddd;">NS2 Server Browser</span><span
+                        class="user-select-none align-middle status-heart" x-data="{pulse: false, cookie_name: 'c'}"
                         x-init="$watch('heartbeat', () => {pulse = false; $nextTick(() => {pulse=true;});}); readCookie()"
                         x-on:click="getServers(); pulse = false; $nextTick(() => {pulse=true;});"
-                        :class="pulse ? 'pulse-anim' : ''"
-                        style="position:absolute; width:40px; text-align:center">❤️</span><br>
+                        :class="[pulse ? 'pulse-anim' : '', connected ? '' : 'status-heart-disc']"
+                        title="The heart beats when new data is received">❤️</span><br>
                     Realtime server browser for Natural Selection 2.<br>
-                    Select your favorite servers with the ❤️ button to get the full benefit
+                    Select your favorite servers with the ❤️ button to get a sound notification when there is room to
+                    join
                 </div>
                 <div class="options-block text-secondary">
                     <!-- begin: options panel -->
@@ -266,7 +276,8 @@
                     <thead>
                         <!-- begin: server header -->
                         <tr>
-                            <th scope="col">&nbsp;</th>
+                            <th scope="col" class="highlight-column"></th>
+                            <th scope="col" class="status-cell"><span>Status</span></th>
                             <th scope="col" x-data="{'name': 'playersIngame'}"
                                 :class="sortKey === name ? 'sort-active' : ''" @click="setSortKey(name)"
                                 class="playercount-header sortable">Players</th>
@@ -289,11 +300,14 @@
                         <template
                             x-for="server in servers.filter((v) => {return filterList(v, hideEmpty);}).sort((a,b) => sortList(a, b))"
                             :key="server.id">
-                            <tr class="border-black border-bottom" scope="row"
-                                x-init="$watch('server.recentlyWentJoinable', (value, oldvalue) => onRecentlyWentJoinableChanged(value, oldvalue, $el, server))"
+                            <tr class="border-black border-bottom"
+                                x-data="{'highlighttime': Math.floor(Date.now() / 1000) - 10}" scope="row"
+                                x-init="$watch('server.recentlyWentJoinable', (value, oldvalue) => {if(onRecentlyWentJoinableChanged(value, oldvalue, $el, server)) highlighttime = Math.floor(Date.now() / 1000)})"
                                 :class="[server.ping >= 999 ? 'greyout' : '', server.favorite ? 'favoriterow' : 'not-favoriterow']"
                                 :style="server.ping >= 999 ? 'pointer-events:none' : ''">
-                                <td class="align-middle fs-4">
+                                <td class="highlight-column"
+                                    :class="currenttime - highlighttime < 10 ? 'highlight-cell' : ''"></td>
+                                <td class="align-middle fs-4 status-cell">
                                     <span class="icons" x-html="getServerIcon(server)"></span>
                                 </td>
                                 <template x-if="server.ping < 999">

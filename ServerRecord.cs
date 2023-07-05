@@ -15,8 +15,6 @@ namespace MyApp
         public int lastRequestPingTime { get; private set; }
         public bool HasChanges { get; set; }
         public string CountryCode { get; set; }
-        public string CountryImg { get; set; }
-
         private DateTime lastRequestTime = DateTime.Now - TimeSpan.FromSeconds(10);
         private byte[]? challenge;
         private bool requestInFlight = false;
@@ -61,13 +59,13 @@ namespace MyApp
             EndPoint = new IPEndPoint(IPAddress.Parse(Hostname), Port + 1);
             lastRequestPingTime = 999;
 
+            CountryCode = "N/A";
             GetCountryInformation();
         }
 
         private class GeoInfo
         {
             public string ip { get; set; }
-            public string country_flag { get; set; }
             public string country_code2 { get; set; }
         }
 
@@ -75,12 +73,11 @@ namespace MyApp
         {
             using (var client = new HttpClient())
             {
-                string geoUrl = $"https://api.ipgeolocation.io/ipgeo?apiKey=c22a8099ac814abc8bb283fafe74a233&fields=country_flag,country_code2&ip={Hostname}";
+                string geoUrl = $"https://api.ipgeolocation.io/ipgeo?apiKey=c22a8099ac814abc8bb283fafe74a233&fields=country_code2&ip={Hostname}";
                 var resp = await client.GetFromJsonAsync<GeoInfo>(geoUrl);
                 if (resp != null)
                 {
                     CountryCode = resp.country_code2;
-                    CountryImg = resp.country_flag;
                 }
             }
         }
@@ -146,11 +143,6 @@ namespace MyApp
             }
         }
 
-        public static void PlaySound(string file)
-        {
-            //Process.Start(@"powershell", $@"-c (New-Object Media.SoundPlayer '{file}').PlaySync();");
-        }
-
         public bool RecentlyWentJoinable()
         {
             return (DateTime.Now - lastJoinable).TotalSeconds < 10;
@@ -195,13 +187,9 @@ namespace MyApp
                     {
                         HasChanges = true;
                         lastJoinable = DateTime.Now;
-                        // Play sound
-                        PlaySound("mixkit-long-pop-2358.wav");
                     }
                     wasJoinable = newJoinable;
                 }
-
-
             }
             else
             {
