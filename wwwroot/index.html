@@ -40,20 +40,24 @@
                     fetch('/servers')
                         .then(response => response.json())
                         .then(data => {
-                            if (this.servers.length == data.length) {
-                                for (let i = 0; i < data.length; i++) {
-                                    // Copy each field if it has changed
-                                    let server = this.servers.find(v => v.id == data[i].id);
-                                    for (let key in data[i]) {
-                                        if (server[key] !== data[i][key]) {
-                                            server[key] = data[i][key];
+                            // Loop over servers
+                            data.forEach((newserver) => {
+                                // If server already in local list, update fields one by one
+                                let server = this.servers.find(v => v.id == newserver.id);
+                                if (server) {
+                                    for (let key in newserver) {
+                                        if (server[key] !== newserver[key]) {
+                                            server[key] = newserver[key];
                                         }
                                     }
+                                } else {
+                                    // Else add this new server to the local list
+                                    this.servers.push(newserver);
                                 }
-                            } else {
-                                data.forEach((v) => { v.favorite = this.isFavorite(v); });
-                                this.servers = data;
-                            }
+                            });
+                            // Do a loop on local list to prune removed servers
+                            this.servers = this.servers.filter(server => data.find(v => v.id == server.id) !== null)
+
                             this.heartbeat = !this.heartbeat;
                         });
 
@@ -152,6 +156,7 @@
                 },
                 filterList(item, hideEmpty) {
                     if (hideEmpty && item.playersIngame === 0) return false;
+                    if (item.visibility === 1) return false;
 
                     return true;
                 },
