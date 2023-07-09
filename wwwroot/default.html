@@ -436,6 +436,24 @@ a.not-favorite {
             return String.fromCodePoint(...codePoints);
         }
 
+        function getDomain(url, subdomain) {
+            subdomain = subdomain || false;
+
+            url = url.replace(/(https?:\/\/)?(www.)?/i, '');
+
+            if (!subdomain) {
+                url = url.split('.');
+
+                url = url.slice(url.length - 2).join('.');
+            }
+
+            if (url.indexOf('/') !== -1) {
+                return url.split('/')[0];
+            }
+
+            return url;
+        }
+
         function alpineInstance() {
             return {
                 title: 'NS2 Server Browser',
@@ -593,7 +611,11 @@ a.not-favorite {
                 },
                 setFavorite(server, value) {
                     server.favorite = value;
-                    docCookies.setItem(server.hostname + ':' + server.port, value, (7 * 24 * 60 * 60));
+                    if (value) {
+                        docCookies.setItem(server.hostname + ':' + server.port, value, Infinity, null, getDomain(window.location.hostname), null, "lax");
+                    } else {
+                        docCookies.removeItem(server.hostname + ':' + server.port, null, getDomain(window.location.hostname));
+                    }
                 },
                 getTotalPlayers(servers) {
                     return servers.map(a => a.playersIngame + a.spectators).reduce((a, b) => a + b, 0);
@@ -635,8 +657,8 @@ a.not-favorite {
                         if (val === 'serverName') this.sortInverse = false;
                         if (val === 'mapName') this.sortInverse = false;
                     }
-                    docCookies.setItem('sortKey', this.sortKey, (7 * 24 * 60 * 60));
-                    docCookies.setItem('sortInverse', this.sortInverse, (7 * 24 * 60 * 60));
+                    docCookies.setItem('sortKey', this.sortKey, Infinity, null, getDomain(window.location.hostname), null, "lax");
+                    docCookies.setItem('sortInverse', this.sortInverse, Infinity, null, getDomain(window.location.hostname), null, "lax");
                 }
             }
         }
@@ -665,13 +687,13 @@ a.not-favorite {
                     <div class="form-check ">
                         <input class="form-check-input" type="checkbox" role="switch" id="switchEmpty"
                             x-model="hideEmpty"
-                            x-init="$watch('hideEmpty', (v) => docCookies.setItem('hideEmpty', v, (7*24*60*60)))">
+                            x-init="$watch('hideEmpty', (v) => docCookies.setItem('hideEmpty', v, Infinity, null, getDomain(window.location.hostname), null, 'lax'))">
                         <label class="form-check-label" for="switchEmpty">Hide empty servers</label>
                     </div>
                     <div class="form-check">
                         <input class="form-check-input" type="checkbox" role="switch" id="switchSound"
                             x-model="soundEnabled"
-                            x-init="$watch('soundEnabled', (v) => docCookies.setItem('soundEnabled', v, (7*24*60*60)))">
+                            x-init="$watch('soundEnabled', (v) => docCookies.setItem('soundEnabled', v, Infinity, null, getDomain(window.location.hostname), null, 'lax'))">
                         <label class="form-check-label" for="switchSound"
                             title="A 'pop!' sound will play when a favorite server stops being full">Enable notification
                             sound for
@@ -680,7 +702,7 @@ a.not-favorite {
                     <div class="form-check">
                         <input class="form-check-input" type="checkbox" role="switch" id="switchFavorites"
                             x-model="favoritesOnTop"
-                            x-init="$watch('favoritesOnTop', (v) => docCookies.setItem('favoritesOnTop', v, (7*24*60*60)))">
+                            x-init="$watch('favoritesOnTop', (v) => docCookies.setItem('favoritesOnTop', v, Infinity, null, getDomain(window.location.hostname), null, 'lax'))">
                         <label class="form-check-label" for="switchFavorites">Favorites always on top</label>
                     </div>
                     <!-- end: options panel -->
