@@ -24,18 +24,15 @@
         function alpineInstance() {
             return {
                 title: 'NS2 Server Browser',
-                intro: 'List over servers:',
                 heartbeat: true,
                 hideEmpty: true,
                 soundEnabled: true,
-                cookie_name: 'c',
                 favoritesOnTop: true,
                 sortKey: 'id',
                 sortInverse: false,
                 showPing: false,
                 connected: false,
                 servers: [],
-                currenttime: Math.floor(Date.now() / 1000),
                 getServers() {
                     fetch('/servers')
                         .then(response => response.json())
@@ -118,12 +115,12 @@
                         console.log("Error: " + error.message);
                     };
                 },
-                startTimer() {
+                initSite() {
                     instance = this;
+                    this.readCookie();
                     this.getServers();
                     setInterval(() => { this.sendKeepAlive() }, 5000);
                     this.connectWebsocket();
-                    setInterval(() => { this.currenttime = this.currenttime + 1; }, 1000);
                 },
                 getServerIcon(server) {
                     if (server.ping >= 999) return '<span title="Server not responding">💀</span>';
@@ -234,13 +231,13 @@
 
 <body>
     <div class="content">
-        <div class="container" x-data="alpineInstance()" x-init="startTimer()" data-bs-theme="dark">
+        <div class="container" x-data="alpineInstance()" x-init="initSite()" data-bs-theme="dark">
             <div class="header">
                 <div class="title-block text-secondary">
                     <span class="h1 header-title" style="color: #dddddd;">NS2 Server Browser</span><span
-                        class="user-select-none align-middle status-heart" x-data="{pulse: false, cookie_name: 'c'}"
-                        x-init="$watch('heartbeat', () => {pulse = false; $nextTick(() => {pulse=true;});}); readCookie()"
-                        x-on:click="getServers(); pulse = false; $nextTick(() => {pulse=true;});"
+                        class="user-select-none align-middle status-heart" x-data="{ pulse: false }"
+                        x-init="$watch('heartbeat', () => { pulse = false; $nextTick(() => { pulse = true; }); });"
+                        x-on:click="getServers()"
                         :class="[pulse ? 'pulse-anim' : '', connected ? '' : 'status-heart-disc']"
                         title="The heart beats when new data is received">❤️</span><br>
                     Realtime server browser for Natural Selection 2.<br>
