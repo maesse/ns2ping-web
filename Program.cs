@@ -11,14 +11,14 @@ builder.Services.Configure<JsonOptions>(opt =>
 
 builder.Services.AddResponseCompression(options =>
 {
-    options.EnableForHttps = true;
+    //options.EnableForHttps = true;
     options.Providers.Add<BrotliCompressionProvider>();
     options.Providers.Add<GzipCompressionProvider>();
 });
 
 var app = builder.Build();
 app.UseResponseCompression();
-app.UseHttpsRedirection();
+//app.UseHttpsRedirection();
 app.UseDefaultFiles();
 app.UseStaticFiles(new StaticFileOptions()
 {
