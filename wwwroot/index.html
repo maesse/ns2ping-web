@@ -52,6 +52,7 @@
                                     }
                                 } else {
                                     // Else add this new server to the local list
+                                    newserver.favorite = this.isFavorite(newserver);
                                     this.servers.push(newserver);
                                 }
                             });
@@ -305,13 +306,11 @@
                         <template
                             x-for="server in servers.filter((v) => {return filterList(v, hideEmpty);}).sort((a,b) => sortList(a, b))"
                             :key="server.id">
-                            <tr class="border-black border-bottom"
-                                x-data="{'highlighttime': Math.floor(Date.now() / 1000) - 10}" scope="row"
-                                x-init="$watch('server.recentlyWentJoinable', (value, oldvalue) => {if(onRecentlyWentJoinableChanged(value, oldvalue, $el, server)) highlighttime = Math.floor(Date.now() / 1000)})"
+                            <tr class="border-black border-bottom" x-data="{'highlighttime': 0}" scope="row"
+                                x-init="$watch('server.recentlyWentJoinable', (value, oldvalue) => {if(onRecentlyWentJoinableChanged(value, oldvalue, $el, server)) {highlighttime += 1; setTimeout(() => highlighttime -= 1, 10000)}})"
                                 :class="[server.ping >= 999 ? 'greyout' : '', server.favorite ? 'favoriterow' : 'not-favoriterow']"
                                 :style="server.ping >= 999 ? 'pointer-events:none' : ''">
-                                <td class="highlight-column"
-                                    :class="currenttime - highlighttime < 10 ? 'highlight-cell' : ''"></td>
+                                <td class="highlight-column" :class="highlighttime >= 1 ? 'highlight-cell' : ''"></td>
                                 <td class="align-middle fs-4 status-cell">
                                     <span class="icons" x-html="getServerIcon(server)"></span>
                                 </td>
