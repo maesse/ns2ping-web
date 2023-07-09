@@ -36,7 +36,8 @@ public class PingService : BackgroundService
 
     public UdpClient client;
     public IPEndPoint ep;
-    public List<ServerRecord> watchedServers;
+    private List<ServerRecord> watchedServers;
+    private readonly object watchedServersLock = new object();
     public bool running = false;
     public bool sleeping = false;
     private DateTime lastRequest = DateTime.Now;
@@ -97,9 +98,12 @@ public class PingService : BackgroundService
     {
         _logger.LogInformation("Writing config");
         var descList = new List<ServerDescription>();
-        foreach (var server in watchedServers)
+        lock (watchedServersLock)
         {
-            descList.Add(server.GetDescription());
+            foreach (var server in watchedServers)
+            {
+                descList.Add(server.GetDescription());
+            }
         }
         JsonSerializerOptions jsonConfig = new()
         {
@@ -112,7 +116,10 @@ public class PingService : BackgroundService
 
     private void AddServer(ServerRecord record)
     {
-        watchedServers.Add(record);
+        lock (watchedServersLock)
+        {
+            watchedServers.Add(record);
+        }
     }
 
     private void StopSleep()
@@ -136,11 +143,14 @@ public class PingService : BackgroundService
         StopSleep();
 
         var list = new List<ServerInfoPublic>();
-        foreach (var s in watchedServers)
+        lock (watchedServersLock)
         {
-            if (s.lastRequestPingTime < 999)
+            foreach (var s in watchedServers)
             {
-                list.Add(new ServerInfoPublic(s));
+                if (s.lastRequestPingTime < 999)
+                {
+                    list.Add(new ServerInfoPublic(s));
+                }
             }
         }
         return list;
@@ -151,12 +161,15 @@ public class PingService : BackgroundService
         StopSleep();
 
         var list = new List<ServerInfoPublic>();
-        foreach (var s in watchedServers)
+        lock (watchedServersLock)
         {
-            if (s.lastRequestPingTime < 999 && s.HasChanges)
+            foreach (var s in watchedServers)
             {
-                list.Add(new ServerInfoPublic(s));
-                s.HasChanges = false;
+                if (s.lastRequestPingTime < 999 && s.HasChanges)
+                {
+                    list.Add(new ServerInfoPublic(s));
+                    s.HasChanges = false;
+                }
             }
         }
         return list;
@@ -169,11 +182,14 @@ public class PingService : BackgroundService
             masterQuery.StartRefresh(client);
         }
 
-        foreach (var server in watchedServers)
+        lock (watchedServersLock)
         {
-            if (server.IsReadyForRefresh())
+            foreach (var server in watchedServers)
             {
-                server.SendInfoRequest(client);
+                if (server.IsReadyForRefresh())
+                {
+                    server.SendInfoRequest(client);
+                }
             }
         }
     }
@@ -182,23 +198,26 @@ public class PingService : BackgroundService
     {
         int newCount = 0;
         // Add servers that were discovered
-        foreach (var addr in masterQuery.ServerList)
+        lock (watchedServersLock)
         {
-            var result = watchedServers.FirstOrDefault(v => IPEndPoint.Equals(v.EndPoint, addr), null);
-            if (result == null)
+            foreach (var addr in masterQuery.ServerList)
             {
-                // Decrement port by one since we are using the game server port here, not the query port
-                var gameaddr = new IPEndPoint(addr.Address, addr.Port - 1);
-                if (gameaddr.ToString().Equals("157.90.129.121:28315"))
+                var result = watchedServers.FirstOrDefault(v => IPEndPoint.Equals(v.EndPoint, addr), null);
+                if (result == null)
                 {
-                    // Special case 5 max spec for TTO
-                    watchedServers.Add(new ServerRecord(_logger, gameaddr.ToString(), 5));
+                    // Decrement port by one since we are using the game server port here, not the query port
+                    var gameaddr = new IPEndPoint(addr.Address, addr.Port - 1);
+                    if (gameaddr.ToString().Equals("157.90.129.121:28315"))
+                    {
+                        // Special case 5 max spec for TTO
+                        watchedServers.Add(new ServerRecord(_logger, gameaddr.ToString(), 5));
+                    }
+                    else
+                    {
+                        watchedServers.Add(new ServerRecord(_logger, gameaddr.ToString()));
+                    }
+                    newCount++;
                 }
-                else
-                {
-                    watchedServers.Add(new ServerRecord(_logger, gameaddr.ToString()));
-                }
-                newCount++;
             }
         }
         _logger.LogInformation($"Added {newCount} servers to the watched server list");
@@ -258,10 +277,13 @@ public class PingService : BackgroundService
                         }
                         else
                         {
-                            var server = watchedServers.SingleOrDefault(v => IPEndPoint.Equals(v!.EndPoint, result.RemoteEndPoint), null);
-                            if (server != null)
+                            lock (watchedServersLock)
                             {
-                                server.HandleResponse(result.Buffer, client);
+                                var server = watchedServers.SingleOrDefault(v => IPEndPoint.Equals(v!.EndPoint, result.RemoteEndPoint), null);
+                                if (server != null)
+                                {
+                                    server.HandleResponse(result.Buffer, client);
+                                }
                             }
                         }
 
@@ -371,15 +393,18 @@ public class PingService : BackgroundService
     private void PrintServers()
     {
         string serverInfo = "Servers:\n========\n";
-        foreach (var server in watchedServers)
+        lock (watchedServersLock)
         {
-            if (server.lastRequestPingTime < 999 && server.info != null)
+            foreach (var server in watchedServers)
             {
-                serverInfo += $"{(server.IsJoinable() ? '#' : ' '),1}{(server.RecentlyWentJoinable() ? '!' : ' '),1} | {server.info.GetPlayersIngame(),2}/{server.info.MaxPlayers} ({server.info.GetSpectators()}/{server.info.GetMaxSpectators()}) | MMR {server.info.GetMMR()} \t| {server.info.Map,-20} | {server.Hostname,1}:{server.Port}\t| {server.info.Name}\n";
-            }
-            else
-            {
-                serverInfo += $"{server.Hostname}:{server.Port} \t| Not responding\n";
+                if (server.lastRequestPingTime < 999 && server.info != null)
+                {
+                    serverInfo += $"{(server.IsJoinable() ? '#' : ' '),1}{(server.RecentlyWentJoinable() ? '!' : ' '),1} | {server.info.GetPlayersIngame(),2}/{server.info.MaxPlayers} ({server.info.GetSpectators()}/{server.info.GetMaxSpectators()}) | MMR {server.info.GetMMR()} \t| {server.info.Map,-20} | {server.Hostname,1}:{server.Port}\t| {server.info.Name}\n";
+                }
+                else
+                {
+                    serverInfo += $"{server.Hostname}:{server.Port} \t| Not responding\n";
+                }
             }
         }
         _logger.LogInformation(serverInfo);
