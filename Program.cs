@@ -26,13 +26,14 @@ app.UseStaticFiles(new StaticFileOptions()
     {
         context.Context.Response.Headers["Permissions-Policy"] = "autoplay";
         context.Context.Response.Headers["Feature-Policy"] = "autoplay";
+        context.Context.Response.Headers.Add("cache-control", new[] { "public,max-age=3600" });
+        context.Context.Response.Headers.Add("Expires", new[] { DateTime.UtcNow.AddHours(1).ToString("R") }); // Format RFC1123
     }
 });
 app.UseWebSockets();
 
 app.MapGet("/servers", () =>
 {
-
     var pingService = app.Services.GetRequiredService<PingService>();
     return pingService.GetServerInfos();
 });
