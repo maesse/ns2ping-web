@@ -11,7 +11,7 @@ namespace MyApp
 
         public string? ipgeolocation_key { get; private set; } = null;
         public Dictionary<string, string> Cache = new Dictionary<string, string>();
-        private readonly object writelock = new object();
+        private readonly object cachelock = new object();
 
 
 
@@ -69,7 +69,7 @@ namespace MyApp
             {
                 WriteIndented = true,
             };
-            lock (writelock)
+            lock (cachelock)
             {
                 var json = JsonSerializer.Serialize(Cache, jsonConfig);
                 File.WriteAllText(getCachePath(), json);
@@ -90,8 +90,11 @@ namespace MyApp
         internal async Task<string?> GetCountryCode(string hostname)
         {
             // Look in cache
-            var value = Cache.GetValueOrDefault(hostname);
-            if (value != null) return value;
+            lock (cachelock)
+            {
+                var value = Cache.GetValueOrDefault(hostname);
+                if (value != null) return value;
+            }
 
             if (ipgeolocation_key == null || ipgeolocation_key.Length == 0)
             {
@@ -105,7 +108,12 @@ namespace MyApp
                 var resp = await client.GetFromJsonAsync<GeoInfo>(geoUrl);
                 if (resp != null)
                 {
-                    if (Cache.TryAdd(hostname, resp.country_code2))
+                    bool modified = false;
+                    lock (cachelock)
+                    {
+                        modified = Cache.TryAdd(hostname, resp.country_code2);
+                    }
+                    if (modified)
                     {
                         SaveCache();
                     }

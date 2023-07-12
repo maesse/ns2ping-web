@@ -70,7 +70,7 @@ namespace MyApp
             // We should have a challenge value at this point
             if (challenge == null)
             {
-                _logger.LogWarning("SendRulesRequest() failed because no challenge value was found");
+                _logger.LogWarning("SendRulesRequest() failed because no challenge value was found. Host: " + EndPoint);
                 return;
             }
 
@@ -90,7 +90,7 @@ namespace MyApp
             // We should have a challenge value at this point
             if (challenge == null)
             {
-                _logger.LogWarning("SendPlayerRequest() failed because no challenge value was found");
+                _logger.LogWarning("SendPlayerRequest() failed because no challenge value was found. Host: " + EndPoint);
                 return;
             }
 

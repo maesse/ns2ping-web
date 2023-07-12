@@ -11,7 +11,7 @@ namespace MyApp
 
         public string? SteamWebAPI { get; private set; } = null;
         public Dictionary<uint, ResultEntry> Cache = new Dictionary<uint, ResultEntry>();
-        private readonly object writelock = new object();
+        private readonly object cachelock = new object();
 
         private ModCache()
         {
@@ -68,7 +68,7 @@ namespace MyApp
                 WriteIndented = true,
             };
 
-            lock (writelock)
+            lock (cachelock)
             {
                 var json = JsonSerializer.Serialize(Cache, jsonConfig);
                 File.WriteAllText(getCachePath(), json);
@@ -98,8 +98,11 @@ namespace MyApp
         public async Task<string?> GetModName(uint id)
         {
             // Look in cache
-            var value = Cache.GetValueOrDefault(id);
-            if (value != null) return value.title;
+            lock (cachelock)
+            {
+                var value = Cache.GetValueOrDefault(id);
+                if (value != null) return value.title;
+            }
 
             if (SteamWebAPI == null || SteamWebAPI.Length == 0)
             {
@@ -121,7 +124,10 @@ namespace MyApp
                     }
                     else
                     {
-                        Cache.Add(id, list[0]);
+                        lock (cachelock)
+                        {
+                            Cache.Add(id, list[0]);
+                        }
                         SaveCache();
                         return list[0].title;
                     }
