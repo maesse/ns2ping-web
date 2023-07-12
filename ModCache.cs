@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Collections.Concurrent;
 
 namespace MyApp
 {
@@ -12,6 +13,7 @@ namespace MyApp
         public string? SteamWebAPI { get; private set; } = null;
         public Dictionary<uint, ResultEntry> Cache = new Dictionary<uint, ResultEntry>();
         private readonly object cachelock = new object();
+        private ConcurrentDictionary<string, Task<ApiResponse?>> apiQueries = new ConcurrentDictionary<string, Task<ApiResponse?>>();
 
         private ModCache()
         {
@@ -113,8 +115,12 @@ namespace MyApp
             using (var client = new HttpClient())
             {
                 Console.WriteLine("Retriving modinfo for " + id);
+
+                // Check if there already is a request in flight for this mod
                 string url = $"https://api.steampowered.com/IPublishedFileService/GetDetails/v1/?key={SteamWebAPI}&publishedfileids%5B0%5D={id}";
-                var resp = await client.GetFromJsonAsync<ApiResponse>(url);
+                // Guard against multiple concurrent queries for the same url
+                var task = apiQueries.GetOrAdd(url, client.GetFromJsonAsync<ApiResponse>(url));
+                var resp = await task;
                 if (resp != null && resp.response != null && resp.response.publishedfiledetails != null)
                 {
                     var list = resp.response.publishedfiledetails;
@@ -124,11 +130,12 @@ namespace MyApp
                     }
                     else
                     {
+                        bool modified = false;
                         lock (cachelock)
                         {
-                            Cache.Add(id, list[0]);
+                            modified = Cache.TryAdd(id, list[0]);
                         }
-                        SaveCache();
+                        if (modified) SaveCache();
                         return list[0].title;
                     }
                 }

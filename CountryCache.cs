@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Text.Json;
 
 namespace MyApp
@@ -13,7 +14,7 @@ namespace MyApp
         public Dictionary<string, string> Cache = new Dictionary<string, string>();
         private readonly object cachelock = new object();
 
-
+        private ConcurrentDictionary<string, Task<GeoInfo?>> apiQueries = new ConcurrentDictionary<string, Task<GeoInfo?>>();
 
         private CountryCache()
         {
@@ -104,8 +105,11 @@ namespace MyApp
             using (var client = new HttpClient())
             {
                 Console.WriteLine("Retrieving country code for ip: " + hostname);
+                // Check if there already is a request in flight for this mod
                 string geoUrl = $"https://api.ipgeolocation.io/ipgeo?apiKey={ipgeolocation_key}&fields=country_code2&ip={hostname}";
-                var resp = await client.GetFromJsonAsync<GeoInfo>(geoUrl);
+                // Guard against multiple concurrent queries for the same url
+                var task = apiQueries.GetOrAdd(geoUrl, client.GetFromJsonAsync<GeoInfo>(geoUrl));
+                var resp = await task;
                 if (resp != null)
                 {
                     bool modified = false;
@@ -113,10 +117,7 @@ namespace MyApp
                     {
                         modified = Cache.TryAdd(hostname, resp.country_code2);
                     }
-                    if (modified)
-                    {
-                        SaveCache();
-                    }
+                    if (modified) SaveCache();
                     return resp.country_code2;
                 }
             }
