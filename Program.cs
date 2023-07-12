@@ -1,5 +1,8 @@
+
 using Microsoft.AspNetCore.Http.Json;
 using Microsoft.AspNetCore.ResponseCompression;
+
+
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddSingleton<PingService>();
@@ -42,6 +45,19 @@ app.MapGet("/servers", () =>
 });
 
 
+
+app.MapGet("/server/{id}", (int id) =>
+{
+    var pingService = app.Services.GetRequiredService<PingService>();
+    var info = new ServerInfo()
+    {
+        playerInfo = pingService.GetPlayerInfo(id),
+        rules = pingService.GetServerRules(id)?.Rules
+    };
+    return info;
+});
+
+
 app.Use(async (context, next) =>
 {
     if (context.Request.Path == "/ws")
@@ -50,7 +66,7 @@ app.Use(async (context, next) =>
         {
             using var webSocket = await context.WebSockets.AcceptWebSocketAsync(
     new WebSocketAcceptContext { DangerousEnableCompression = true });
-            var socketFinishedTcs = new TaskCompletionSource<object>();
+            var socketFinishedTcs = new TaskCompletionSource();
             var pingService = app.Services.GetRequiredService<PingService>();
             var ws = pingService.AddSocket(webSocket, socketFinishedTcs);
             ws.Read();

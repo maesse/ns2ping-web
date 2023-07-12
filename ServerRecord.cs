@@ -11,33 +11,24 @@ namespace MyApp
         public string Hostname { get; }
         public int Port { get; set; }
         public A2SInfo? info { get; set; }
-        public IPEndPoint EndPoint;
+        public PlayerInfo? PlayerInfo { get; set; }
+        public ServerRules? Rules { get; set; }
+        public IPEndPoint EndPoint { get; set; }
         public int lastRequestPingTime { get; private set; }
+        public bool NotResponding { get; private set; }
         public bool HasChanges { get; set; }
-        public string CountryCode { get; set; }
+        public string? CountryCode { get; set; } = null;
         private DateTime lastRequestTime = DateTime.Now - TimeSpan.FromSeconds(10);
         private byte[]? challenge;
-        private bool requestInFlight = false;
+        private bool infoRequestInFlight = false;
         private bool wasJoinable = false;
-        private int? maxJoinableSpec = null;
+        private int? maxJoinableSpec = 3;
         private DateTime lastJoinable = DateTime.Now - TimeSpan.FromSeconds(10);
         private readonly ILogger _logger;
 
-        public ServerRecord(ILogger logger, string host, int? specLimit) : this(logger, host)
+        public ServerRecord(ILogger logger, string host, int? specLimit = null)
         {
             maxJoinableSpec = specLimit;
-        }
-
-        public ServerDescription GetDescription()
-        {
-            var desc = new ServerDescription();
-            desc.Hostname = Hostname + ":" + Port;
-            desc.MaxJoinableSpec = maxJoinableSpec;
-            return desc;
-        }
-
-        public ServerRecord(ILogger logger, string host)
-        {
             _logger = logger;
             ID = ID_COUNTER++;
             Hostname = host;
@@ -58,34 +49,67 @@ namespace MyApp
 
             EndPoint = new IPEndPoint(IPAddress.Parse(Hostname), Port + 1);
             lastRequestPingTime = 999;
+            NotResponding = true;
 
-            CountryCode = "N/A";
             GetCountryInformation();
         }
 
-        private class GeoInfo
+        public bool HasValidData()
         {
-            public string ip { get; set; }
-            public string country_code2 { get; set; }
+            return !NotResponding && info != null;
         }
 
         private async void GetCountryInformation()
         {
-            using (var client = new HttpClient())
+            CountryCode = await CountryCache.Instance.GetCountryCode(Hostname);
+            HasChanges = true;
+        }
+
+        private void SendRulesRequest(UdpClient client)
+        {
+            // We should have a challenge value at this point
+            if (challenge == null)
             {
-                string geoUrl = $"https://api.ipgeolocation.io/ipgeo?apiKey=c22a8099ac814abc8bb283fafe74a233&fields=country_code2&ip={Hostname}";
-                var resp = await client.GetFromJsonAsync<GeoInfo>(geoUrl);
-                if (resp != null)
-                {
-                    CountryCode = resp.country_code2;
-                }
+                _logger.LogWarning("SendRulesRequest() failed because no challenge value was found");
+                return;
             }
+
+            // Header + 'V'
+            byte[] payload = { 0xff, 0xff, 0xff, 0xff, 0x56 };
+            payload = Writer.Append(payload, challenge);
+
+            int bytesSent = client.Send(payload, payload.Length, EndPoint);
+            if (bytesSent != payload.Length) throw new Exception($"UDP send failed, bytesSent({bytesSent}) != payload.Length({payload.Length})");
+
+            lastRequestTime = DateTime.Now;
+            _logger.LogDebug($"Sending A2S_RULES to server {EndPoint}");
+        }
+
+        private void SendPlayerRequest(UdpClient client)
+        {
+            // We should have a challenge value at this point
+            if (challenge == null)
+            {
+                _logger.LogWarning("SendPlayerRequest() failed because no challenge value was found");
+                return;
+            }
+
+            // Header + 'U'
+            byte[] payload = { 0xff, 0xff, 0xff, 0xff, 0x55 };
+            payload = Writer.Append(payload, challenge);
+
+            int bytesSent = client.Send(payload, payload.Length, EndPoint);
+            if (bytesSent != payload.Length) throw new Exception($"UDP send failed, bytesSent({bytesSent}) != payload.Length({payload.Length})");
+
+            lastRequestTime = DateTime.Now;
+            _logger.LogDebug($"Sending A2S_PLAYER to server {EndPoint}");
         }
 
         public void SendInfoRequest(UdpClient client)
         {
-            if (requestInFlight)
+            if (infoRequestInFlight)
             {
+                NotResponding = true;
                 lastRequestPingTime = 999;
             }
 
@@ -100,31 +124,29 @@ namespace MyApp
             if (bytesSent != payload.Length) throw new Exception($"UDP send failed, bytesSent({bytesSent}) != payload.Length({payload.Length})");
 
             lastRequestTime = DateTime.Now;
-            requestInFlight = true;
+            infoRequestInFlight = true;
             _logger.LogDebug($"Sending InfoRequest to server {EndPoint}");
         }
 
         public bool IsJoinable()
         {
-            if (lastRequestPingTime >= 999 || info == null)
+            if (!HasValidData())
             {
                 return false;
             }
 
-            int maxSpec = info.GetMaxSpectators();
+            int maxSpec = info!.GetMaxSpectators();
             if (maxSpec == 5) maxSpec = 3;
-            if (maxJoinableSpec.HasValue) maxSpec = maxJoinableSpec.Value;
+            maxSpec = maxJoinableSpec ?? maxSpec;
             if (info.GetPlayersIngame() + info.GetSpectators() < info.MaxPlayers + maxSpec) return true;
 
             return false;
         }
 
-
-
         internal bool IsReadyForRefresh()
         {
             int msSinceLastRequest = (int)(DateTime.Now - lastRequestTime).TotalMilliseconds;
-            if (!requestInFlight)
+            if (!infoRequestInFlight)
             {
                 if (info != null && info.GetPlayersIngame() == 0)
                 {
@@ -150,36 +172,50 @@ namespace MyApp
 
         internal void HandleResponse(byte[] data, UdpClient client)
         {
-            if (!requestInFlight)
-            {
-                _logger.LogWarning("Received response, but there is no request in flight");
-                return;
-            }
-
-            requestInFlight = false;
             lastRequestPingTime = (int)(DateTime.Now - lastRequestTime).TotalMilliseconds;
+            NotResponding = false;
 
             if (data[4] == 'A')
             {
+                if (!infoRequestInFlight)
+                {
+                    _logger.LogWarning("Received response, but there is no request in flight"); // This breaks now since there can be multple requests in flight at the same time
+                }
                 // Resend request with challenge
                 _logger.LogDebug($"Received new challenge for server {EndPoint}");
                 challenge = new byte[4];
                 Buffer.BlockCopy(data, 5, challenge, 0, 4);
+                infoRequestInFlight = false;
                 SendInfoRequest(client);
             }
             else if (data[4] == 'I')
             {
+                if (!infoRequestInFlight)
+                {
+                    _logger.LogWarning("Received response, but there is no request in flight"); // This breaks now since there can be multple requests in flight at the same time
+                }
+                infoRequestInFlight = false;
+                // Received A2S_INFO response
                 if (info == null)
                 {
                     info = new A2SInfo(data);
                     wasJoinable = IsJoinable();
                     HasChanges = true;
+                    SendRulesRequest(client);
+                    SendPlayerRequest(client);
                 }
                 else
                 {
+                    string lastMapInfo = info.Map;
                     if (info.ReadInfo(data))
                     {
                         HasChanges = true;
+                        SendPlayerRequest(client);
+                        if (!string.Equals(lastMapInfo, info.Map))
+                        {
+                            // Get new rules if map has changed
+                            SendRulesRequest(client);
+                        }
                     }
 
                     bool newJoinable = IsJoinable();
@@ -189,6 +225,30 @@ namespace MyApp
                         lastJoinable = DateTime.Now;
                     }
                     wasJoinable = newJoinable;
+                }
+            }
+            else if (data[4] == 'D')
+            {
+                // Received A2S_PLAYER response
+                if (PlayerInfo == null)
+                {
+                    PlayerInfo = new PlayerInfo(data);
+                }
+                else
+                {
+                    PlayerInfo.ReadInfo(data);
+                }
+            }
+            else if (data[4] == 'E')
+            {
+                // Received A2S_RULES response
+                if (Rules == null)
+                {
+                    Rules = new ServerRules(data);
+                }
+                else
+                {
+                    Rules.ReadInfo(data);
                 }
             }
             else
@@ -201,5 +261,7 @@ namespace MyApp
         {
             challenge = null;
         }
+
+
     }
 }

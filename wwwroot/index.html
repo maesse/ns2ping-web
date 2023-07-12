@@ -29,12 +29,14 @@
             /* Chrome 36+, Opera 23+, Firefox 39+, Safari 12+, iOS 10+ */
         }
     </style>
-    <link href="css/bootstrap.min.css" rel="stylesheet">
+    <link href="css/bootstrap.min_stripped.css" rel="stylesheet">
     <link rel="stylesheet" href="css/style.css">
     <script>
         var instance = null;
 
         function getFlagEmoji(countryCode) {
+            if (countryCode === null) return "";
+
             const codePoints = countryCode
                 .toUpperCase()
                 .split('')
@@ -71,33 +73,19 @@
                 sortInverse: false,
                 showPing: false,
                 connected: false,
+                selectedId: null,
+                autojoinServerId: null,
                 servers: [],
                 getServers() {
                     fetch('/servers')
                         .then(response => response.json())
                         .then(data => {
                             // Loop over servers
-                            data.forEach((newserver) => {
-                                // If server already in local list, update fields one by one
-                                let server = this.servers.find(v => v.id == newserver.id);
-                                if (server) {
-                                    for (let key in newserver) {
-                                        if (server[key] !== newserver[key]) {
-                                            server[key] = newserver[key];
-                                        }
-                                    }
-                                } else {
-                                    // Else add this new server to the local list
-                                    newserver.favorite = this.isFavorite(newserver);
-                                    this.servers.push(newserver);
-                                }
-                            });
+                            data.forEach((entry) => this.updateServer(entry));
                             // Do a loop on local list to prune removed servers
-                            this.servers = this.servers.filter(server => data.find(v => v.id == server.id) !== null)
-
+                            this.servers = this.servers.filter(server => data.find(v => v.id == server.id) !== null) // Does this mess with alpine proxy?
                             this.heartbeat = !this.heartbeat;
                         });
-
                 },
                 sendKeepAlive() {
                     socket.send("ping");
@@ -130,35 +118,43 @@
                     socket.onmessage = function (event) {
                         //console.log("Data received: " + event.data);
                         let data = JSON.parse(event.data);
-                        for (let i = 0; i < data.length; i++) {
-                            // Copy each field if it has changed
-                            let server = window.instance.servers.find(v => v.id == data[i].id);
-                            if (server) {
-                                // Update existing server
-                                for (let key in data[i]) {
-                                    if (server[key] !== data[i][key]) {
-                                        server[key] = data[i][key];
-                                    }
-                                }
-                            } else {
-                                // Add server
-                                window.instance.servers.push(data[i]);
+                        data.forEach((entry) => {
+                            window.instance.updateServer(entry);
+                            if (entry.id === window.instance.selectedId) {
+                                window.instance.updateServerInfo(entry.id);
                             }
-                        }
-
+                        });
                         window.instance.heartbeat = !window.instance.heartbeat;
-
                     };
 
                     socket.onerror = function (error) {
                         console.log("Error: " + error.message);
                     };
                 },
+                updateServer(server) {
+                    // If server already in local list, update fields one by one
+                    let localServer = window.instance.servers.find(v => v.id == server.id);
+                    if (localServer) {
+                        // Update existing server
+                        for (let key in server) {
+                            if (localServer[key] !== server[key]) {
+                                localServer[key] = server[key];
+                            }
+                        }
+                    } else {
+                        // Else add this new server to the local list
+                        server.favorite = window.instance.isFavorite(server);
+                        server.rules = { "modlist": "" };
+                        server.playerInfo = {};
+                        window.instance.servers.push(server);
+                    }
+                },
                 initSite() {
                     instance = this;
                     this.readCookie();
                     this.getServers();
                     setInterval(() => { this.sendKeepAlive() }, 5000);
+                    setInterval(() => this.timerTickServerInfo(), 1000);
                     this.connectWebsocket();
                 },
                 getServerIcon(server) {
@@ -184,6 +180,11 @@
                         //el.classList.add('highlight-anim');
                         if (this.soundEnabled && server.favorite) {
                             this.playSound();
+                        }
+                        if (this.autojoinServerId === server.id) {
+                            console.log("Autojoining server: " + server.serverName);
+                            window.open('steam://run/4920//+connect ' + server.hostname + ':' + server.port + '/', '_blank');
+                            this.autojoinServerId = null;
                         }
                         if (server.favorite) {
                             return true;
@@ -252,6 +253,41 @@
 
                     if (this.sortInverse) res = res * -1;
                     return res;
+                },
+                selectServerId(val) {
+                    if (this.selectedId === val) {
+                        // Deselect
+                        this.selectedId = null;
+                    } else {
+                        this.selectedId = val;
+                        this.updateServerInfo(val);
+                    }
+                    this.autojoinServerId = null; // Reset autojoin
+                    console.log("Selected id: " + this.selectedId);
+                },
+                updateServerInfo(val) {
+                    // Request player info
+                    fetch('/server/' + val)
+                        .then(response => response.json())
+                        .then(data => {
+                            var result = this.servers.find(v => v.id === this.selectedId);
+                            if (result != null) {
+                                result.playerinfo = data.playerInfo.entries;
+                                result.rules = data.rules;
+                            }
+                        });
+                },
+                timerTickServerInfo() {
+                    if (this.selectedId != null) {
+                        var result = this.servers.find(v => v.id === this.selectedId);
+                        if (result != null) {
+                            result.playerinfo.forEach(v => v.duration += 1);
+                        }
+                    }
+                },
+                splitMods(modlist) {
+                    var list = modlist.split(';');
+                    return list;
                 },
                 setSortKey(val) {
                     if (this.sortKey === val) {
@@ -341,12 +377,12 @@
                         </tr>
                         <!-- end: server header -->
                     </thead>
-                    <tbody>
-                        <!-- begin: server card -->
-                        <template
-                            x-for="server in servers.filter((v) => {return filterList(v, hideEmpty);}).sort((a,b) => sortList(a, b))"
-                            :key="server.id">
-                            <tr class="border-black border-bottom" x-data="{'highlighttime': 0}" scope="row"
+                    <!-- begin: server card -->
+                    <template
+                        x-for="server in servers.filter((v) => {return filterList(v, hideEmpty);}).sort((a,b) => sortList(a, b))"
+                        :key="server.id">
+                        <tbody>
+                            <tr class="border-black border-bottom server-row" x-data="{'highlighttime': 0}" scope="row"
                                 x-init="$watch('server.recentlyWentJoinable', (value, oldvalue) => {if(onRecentlyWentJoinableChanged(value, oldvalue, $el, server)) {highlighttime += 1; setTimeout(() => highlighttime -= 1, 10000)}})"
                                 :class="[server.ping >= 999 ? 'greyout' : '', server.favorite ? 'favoriterow' : 'not-favoriterow']"
                                 :style="server.ping >= 999 ? 'pointer-events:none' : ''">
@@ -381,7 +417,7 @@
                                 </td>
                                 <td class="align-middle"><span x-text="getFlagEmoji(server.countryCode)"
                                         x-bind:title="'Ping (from EU): ' + server.ping"></span> <span class="servername"
-                                        x-text="server.serverName" style="pointer-events:none"></span></td>
+                                        x-text="server.serverName" @click="selectServerId(server.id)"></span></td>
                                 <td class="align-middle"><span class="text-uppercase" x-text="server.mapName"
                                         style="pointer-events:none"></span>
                                 </td>
@@ -396,8 +432,72 @@
                                         title="Toggle favorite">❤️</a>
                                 </td>
                             </tr>
-                        </template>
-                    </tbody>
+                            <template x-if="selectedId === server.id">
+                                <tr>
+                                    <td colspan="100%" class="playerlist">
+                                        <div class="detail-container">
+                                            <div>
+                                                <table>
+                                                    <thead>
+                                                        <tr>
+                                                            <th>Mods installed:</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        <template x-for="mod in splitMods(server.rules.modlist)"
+                                                            :key="mod">
+                                                            <tr>
+                                                                <td x-text="mod"></td>
+                                                            </tr>
+                                                        </template>
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                            <div>
+                                                <table>
+                                                    <thead>
+                                                        <tr>
+                                                            <th>Players</th>
+                                                            <th>Score</th>
+                                                            <th>Duration</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        <template x-for="player in server.playerinfo"
+                                                            :key="player.index">
+                                                            <tr>
+                                                                <td x-text="player.name"></td>
+                                                                <td x-text="player.score"></td>
+                                                                <td
+                                                                    x-text="new Date(player.duration * 1000).toISOString().slice(11, 19)">
+                                                                </td>
+                                                            </tr>
+                                                        </template>
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                            <div>
+                                                <template x-if="autojoinServerId === null">
+                                                    <button type="button" class="btn btn-outline-custom btn-lg"
+                                                        @click="autojoinServerId = server.id"
+                                                        x-bind:disabled="server.joinable">Autojoin</button>
+                                                </template>
+                                                <template x-if="autojoinServerId !== null">
+                                                    <button type="button" class="btn btn-outline-custom btn-lg active"
+                                                        @click="autojoinServerId = null"><span
+                                                            style="display: flex; align-items: center;">
+                                                            <div class="loader"></div> Stop
+                                                            Autojoin
+                                                        </span>
+                                                    </button>
+                                                </template>
+                                            </div>
+                                        </div>
+                                    </td>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </template>
                 </table>
                 <!-- end: server card -->
             </div>

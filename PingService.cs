@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
 using System.Net.WebSockets;
@@ -10,9 +11,9 @@ public class PingService : BackgroundService
     public class WebsocketInstance
     {
         public WebSocket webSocket { get; }
-        public TaskCompletionSource<object> socketFinishedTcs { get; }
+        public TaskCompletionSource socketFinishedTcs { get; }
         public DateTime lastKeepAlive { get; set; }
-        public WebsocketInstance(WebSocket webSocket, TaskCompletionSource<object> socketFinishedTcs)
+        public WebsocketInstance(WebSocket webSocket, TaskCompletionSource socketFinishedTcs)
         {
             this.webSocket = webSocket;
             this.socketFinishedTcs = socketFinishedTcs;
@@ -51,7 +52,9 @@ public class PingService : BackgroundService
     public PingService(ILogger<PingService> logger)
     {
         _logger = logger;
-        Init();
+        watchedServers = new List<ServerRecord>();
+        ep = new IPEndPoint(IPAddress.Any, 0);
+        client = new UdpClient(ep);
     }
 
     private void Init()
@@ -59,59 +62,6 @@ public class PingService : BackgroundService
         watchedServers = new List<ServerRecord>();
         ep = new IPEndPoint(IPAddress.Any, 0);
         client = new UdpClient(ep);
-
-        //ReadConfig();
-    }
-
-    private void ReadConfig()
-    {
-        bool loadFail = false;
-        try
-        {
-            var configText = File.ReadAllText("config/config.json");
-            var config = JsonSerializer.Deserialize<List<ServerDescription>>(configText);
-            _logger.LogInformation("Reading config");
-            foreach (var descr in config)
-            {
-                AddServer(new ServerRecord(_logger, descr.Hostname, descr.MaxJoinableSpec));
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Exception while trying to read config");
-            loadFail = true;
-        }
-
-        if (loadFail)
-        {
-            _logger.LogInformation("Loading default config");
-            AddServer(new ServerRecord(_logger, "136.243.135.61:27015")); // BAD #1
-            AddServer(new ServerRecord(_logger, "136.243.135.61:27019")); // BAD #2
-            AddServer(new ServerRecord(_logger, "136.243.135.61:27065")); // BAD #3
-            AddServer(new ServerRecord(_logger, "157.90.129.121:28315", 5)); // TTO
-
-            WriteConfig();
-        }
-    }
-
-    private void WriteConfig()
-    {
-        _logger.LogInformation("Writing config");
-        var descList = new List<ServerDescription>();
-        lock (watchedServersLock)
-        {
-            foreach (var server in watchedServers)
-            {
-                descList.Add(server.GetDescription());
-            }
-        }
-        JsonSerializerOptions jsonConfig = new()
-        {
-            WriteIndented = true,
-
-        };
-        var json = JsonSerializer.Serialize(descList, jsonConfig);
-        File.WriteAllText("config/config.json", json);
     }
 
     private void AddServer(ServerRecord record)
@@ -147,7 +97,7 @@ public class PingService : BackgroundService
         {
             foreach (var s in watchedServers)
             {
-                if (s.lastRequestPingTime < 999)
+                if (s.HasValidData())
                 {
                     list.Add(new ServerInfoPublic(s));
                 }
@@ -165,7 +115,7 @@ public class PingService : BackgroundService
         {
             foreach (var s in watchedServers)
             {
-                if (s.lastRequestPingTime < 999 && s.HasChanges)
+                if (s.HasValidData() && s.HasChanges)
                 {
                     list.Add(new ServerInfoPublic(s));
                     s.HasChanges = false;
@@ -202,7 +152,7 @@ public class PingService : BackgroundService
         {
             foreach (var addr in masterQuery.ServerList)
             {
-                var result = watchedServers.FirstOrDefault(v => IPEndPoint.Equals(v.EndPoint, addr), null);
+                var result = watchedServers.SingleOrDefault(v => IPEndPoint.Equals(v!.EndPoint, addr), null);
                 if (result == null)
                 {
                     // Decrement port by one since we are using the game server port here, not the query port
@@ -253,12 +203,12 @@ public class PingService : BackgroundService
                     var delayTask = Task.Delay(delayTime, CancellationTokenSource.CreateLinkedTokenSource(sleepToken.Token, stoppingToken).Token);
                     if (receiveTask.IsFaulted)
                     {
-                        _logger.LogDebug("ReceiveTask faulted!");
+                        _logger.LogWarning("ReceiveTask faulted!");
                         Console.WriteLine(receiveTask.Exception);
                     }
                     if (receiveTask.IsCompleted)
                     {
-                        _logger.LogDebug("Does this ever run?");
+                        _logger.LogWarning("Does this ever run?");
                         receiveTask = client.ReceiveAsync();
                     }
 
@@ -355,7 +305,7 @@ public class PingService : BackgroundService
                 if (now - socket.lastKeepAlive > WebsocketTimeout)
                 {
                     _logger.LogInformation("Timeout from webSocket " + socket.webSocket);
-                    socket.socketFinishedTcs.SetResult(null);
+                    socket.socketFinishedTcs.SetResult();
                     cleanupList.Add(socket);
                 }
             }
@@ -397,9 +347,9 @@ public class PingService : BackgroundService
         {
             foreach (var server in watchedServers)
             {
-                if (server.lastRequestPingTime < 999 && server.info != null)
+                if (server.HasValidData())
                 {
-                    serverInfo += $"{(server.IsJoinable() ? '#' : ' '),1}{(server.RecentlyWentJoinable() ? '!' : ' '),1} | {server.info.GetPlayersIngame(),2}/{server.info.MaxPlayers} ({server.info.GetSpectators()}/{server.info.GetMaxSpectators()}) | MMR {server.info.GetMMR()} \t| {server.info.Map,-20} | {server.Hostname,1}:{server.Port}\t| {server.info.Name}\n";
+                    serverInfo += $"{(server.IsJoinable() ? '#' : ' '),1}{(server.RecentlyWentJoinable() ? '!' : ' '),1} | {server.info!.GetPlayersIngame(),2}/{server.info.MaxPlayers} ({server.info.GetSpectators()}/{server.info.GetMaxSpectators()}) | MMR {server.info.GetMMR()} \t| {server.info.Map,-20} | {server.Hostname,1}:{server.Port}\t| {server.info.Name}\n";
                 }
                 else
                 {
@@ -419,7 +369,7 @@ public class PingService : BackgroundService
         return await Task.WhenAny(task1, task2);
     }
 
-    internal WebsocketInstance AddSocket(WebSocket webSocket, TaskCompletionSource<object> socketFinishedTcs)
+    internal WebsocketInstance AddSocket(WebSocket webSocket, TaskCompletionSource socketFinishedTcs)
     {
         var ws = new WebsocketInstance(webSocket, socketFinishedTcs);
         lock (webSocketListLock)
@@ -427,6 +377,26 @@ public class PingService : BackgroundService
             webSocketList.Add(ws);
         }
         return ws;
+    }
+
+    internal PlayerInfo? GetPlayerInfo(int id)
+    {
+        lock (watchedServersLock)
+        {
+            var record = watchedServers.FirstOrDefault((s) => s!.ID == id, null);
+            if (record == null) return null;
+            return record.PlayerInfo;
+        }
+    }
+
+    internal ServerRules? GetServerRules(int id)
+    {
+        lock (watchedServersLock)
+        {
+            var record = watchedServers.FirstOrDefault((s) => s!.ID == id, null);
+            if (record == null) return null;
+            return record.Rules;
+        }
     }
 }
 

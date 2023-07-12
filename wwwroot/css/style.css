@@ -129,16 +129,16 @@ div.container>div {
 
 .custom-table tbody tr.active th,
 .custom-table tbody tr.active td,
-.custom-table tbody tr:hover th,
-.custom-table tbody tr:hover td {
+.custom-table tbody tr.server-row:hover th,
+.custom-table tbody tr.server-row:hover td {
     color: #fff;
     /*background: #2e2e36;*/
 }
 
 .custom-table tbody tr.active th a,
 .custom-table tbody tr.active td a,
-.custom-table tbody tr:hover th a,
-.custom-table tbody tr:hover td a {
+.custom-table tbody tr.server-row:hover th a,
+.custom-table tbody tr.server-row:hover td a {
     color: #fff;
 }
 
@@ -367,6 +367,7 @@ span.icons {
 
 .servername {
     font-size: 1.35rem !important;
+    cursor: pointer;
 }
 
 a.not-favorite {
@@ -388,4 +389,87 @@ a.not-favorite {
 
 .footer {
     color: #646464;
+}
+
+/* Player List */
+table.table.custom-table tbody tr td.playerlist {
+    background-color: #15151a;
+}
+
+table.table.custom-table tbody tr td.playerlist table tbody tr td {
+    padding-top: 0px;
+    padding-bottom: 0px;
+    padding-left: 10px;
+    padding-right: 10px;
+}
+
+table.table.custom-table tbody tr td.playerlist table tbody tr:nth-child(2n) td {
+    background-color: #1b1b20;
+}
+
+table.table.custom-table tbody tr td.playerlist table thead tr th {
+    padding: 10px;
+    font-weight: bold;
+}
+
+.detail-container {
+    display: flex;
+    flex-direction: row;
+
+}
+
+.loader {
+    border: 4px solid #15151a;
+    /* Light grey */
+    border-top: 4px solid #c4c4c4;
+    /* Blue */
+    border-radius: 50%;
+    width: 24px;
+    height: 24px;
+    display: inline-block;
+    animation: spin 1s ease-in-out infinite;
+    margin-right: 10px;
+}
+
+.btn-outline-custom {
+    --bs-btn-color: #d5d5d5;
+    --bs-btn-bg: #25252b;
+    --bs-btn-border-color: #6c757d;
+    --bs-btn-hover-color: #fff;
+    --bs-btn-hover-bg: #33333c;
+    --bs-btn-hover-border-color: #6c757d;
+    --bs-btn-focus-shadow-rgb: 108, 117, 125;
+    --bs-btn-active-color: #fff;
+    --bs-btn-active-bg: #4b2424;
+    --bs-btn-active-border-color: #460808;
+    --bs-btn-active-shadow: inset 0 3px 5px rgba(0, 0, 0, 0.125);
+    --bs-btn-disabled-color: #33333c;
+    --bs-btn-disabled-bg: transparent;
+    --bs-btn-disabled-border-color: #33333c;
+    --bs-gradient: none;
+}
+
+@keyframes spin {
+    0% {
+        transform: rotate(0deg);
+    }
+
+    100% {
+        transform: rotate(360deg);
+    }
+}
+
+.detail-container>div {
+    margin: 10px;
+
+}
+
+/* Placed at the bottom side */
+.resizer-b {
+    bottom: 0;
+    cursor: row-resize;
+    height: 10px;
+    left: 0;
+    width: 100%;
+    background-color: #000;
 }

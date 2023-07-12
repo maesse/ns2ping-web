@@ -1,2 +1,10 @@
+# Docker builds
 docker build -t ns2ping-web-image -f Dockerfile .
 docker run --name ns2ping-web -v ns2ping-web-config:/App/config -p 80:80 -d ns2ping-web-image
+
+# Purge unused css
+purgecss --css wwwroot/css/bootstrap.min_full.css --content wwwroot/index.html -o wwwroot/css/bootstrap.min_stripped.css
+
+# Inline scripts/css in the main html
+inline-script-tags wwwroot/index.html wwwroot/default.html
+inline-stylesheets wwwroot/default.html wwwroot/default.html

@@ -4,10 +4,10 @@ namespace MyApp
     {
         public byte Header;
         public byte Protocol;
-        public string Name;
-        public string Map;
-        public string Folder;
-        public string Game;
+        public string Name = string.Empty;
+        public string Map = string.Empty;
+        public string Folder = string.Empty;
+        public string Game = string.Empty;
         public short ID;
         public byte Players;
         public byte MaxPlayers;
@@ -16,11 +16,11 @@ namespace MyApp
         public byte Environment;
         public byte Visibility;
         public byte VAC;
-        public string Version;
+        public string Version = string.Empty;
         public byte EDF;
         public short port;
         public long SteamID;
-        public string Keywords;
+        public string Keywords = string.Empty;
         public List<string> KeywordParts = new List<string>();
 
         public A2SInfo(byte[] data)
@@ -60,6 +60,13 @@ namespace MyApp
             int number;
             int.TryParse(KeywordParts[EXT_MAXSPECTATORS], out number);
             return number;
+        }
+
+        public string GetGameType()
+        {
+            if (KeywordParts.Count <= EXT_GAMETYPE) return "N/A";
+
+            return KeywordParts[EXT_GAMETYPE];
         }
 
         public string GetMMR()

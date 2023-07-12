@@ -80,5 +80,19 @@ namespace MyApp
             offset += 8;
             return value;
         }
+
+        public int ReadInt()
+        {
+            int value = (int)(data[offset] + (data[offset + 1] << 8) + (data[offset + 2] << 16) + (data[offset + 3] << 24));
+            offset += 4;
+            return value;
+        }
+
+        internal float readFloat()
+        {
+            float value = BitConverter.ToSingle(data, offset);
+            offset += 4;
+            return value;
+        }
     }
 }
