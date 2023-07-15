@@ -497,17 +497,31 @@ table.table.custom-table tbody tr td.playerlist table thead tr th {
 
 .detail-container>div {
     margin: 10px;
-
 }
 
-/* Placed at the bottom side */
-.resizer-b {
-    bottom: 0;
-    cursor: row-resize;
-    height: 10px;
-    left: 0;
-    width: 100%;
-    background-color: #000;
+.boxshadow {
+    box-shadow: 0px 0px 10px #0c0c0f;
+}
+
+.autojoin {
+
+    margin-bottom: 10px;
+    background-color: #1b1b20;
+    padding: 5px;
+    box-shadow: 0px 0px 10px #0c0c0f;
+}
+
+.serverinfo {
+
+
+    background-color: #1b1b20;
+    padding: 5px;
+    box-shadow: 0px 0px 10px #0c0c0f;
+}
+
+.autojoin-btn {
+    margin: auto;
+    display: flex;
 }</style>
     <script>
         var instance = null;
@@ -651,37 +665,37 @@ table.table.custom-table tbody tr td.playerlist table thead tr th {
                     if (mmr <= 9999) return "/images/Tier_7.webp";
                     return "/images/Tier_unknown.webp";
                 },
-                onRecentlyWentJoinableChanged(value, oldvalue, el, server) {
-                    if (value && (value != oldvalue)) {
-                        //el.classList.remove('highlight-anim');
-                        //void el.offsetWidth;
-                        //el.classList.add('highlight-anim');
+                onRecentlyWentJoinableChanged(value, oldvalue, server) {
+                    var becameJoinable = value && !oldvalue
+                    if (becameJoinable) {
+                        // Trigger sound
                         if (this.soundEnabled && server.favorite) {
-                            this.playSound();
+                            this.playSound(server);
                         }
+
+                        // Trigger autojoin
                         if (this.autojoinServerId === server.id) {
                             console.log("Autojoining server: " + server.serverName);
-                            window.open('steam://run/4920//+connect ' + server.hostname + ':' + server.port + '/', '_blank');
+                            window.open('steam://run/4920//+connect ' + server.hostname + ':' + server.port + '/');
+                            // Cancel autojoin now that we triggered it
                             this.autojoinServerId = null;
                         }
-                        if (server.favorite) {
-                            return true;
-                        }
                     }
-                    return false;
+                    return becameJoinable;
                 },
-                filterList(item, hideEmpty) {
-                    if (hideEmpty && item.playersIngame === 0) return false;
-                    if (item.visibility === 1) return false;
-
+                filterList(server, hideEmpty) {
+                    // Determine is a server should be visible on the list
+                    if (server.playersIngame === 0 && hideEmpty) return false;
+                    if (server.visibility === 1) return false;
                     return true;
                 },
-                playSound() {
+                playSound(server) {
                     var audio = new Audio('/sounds/mixkit-long-pop-2358.wav');
                     audio.play();
-                    console.log("Made a sound!");
+                    console.log("Made a sound! Triggered by server: " + server.serverName);
                 },
                 readCookie() {
+                    // Read settings from cookie
                     this.hideEmpty = docCookies.hasItem('hideEmpty') ? (docCookies.getItem('hideEmpty') == 'true') : true;
                     this.soundEnabled = docCookies.hasItem('soundEnabled') ? (docCookies.getItem('soundEnabled') == 'true') : true;
                     this.favoritesOnTop = docCookies.hasItem('favoritesOnTop') ? (docCookies.getItem('favoritesOnTop') == 'true') : true;
@@ -860,11 +874,12 @@ table.table.custom-table tbody tr td.playerlist table thead tr th {
                         x-for="server in servers.filter((v) => {return filterList(v, hideEmpty);}).sort((a,b) => sortList(a, b))"
                         :key="server.id">
                         <tbody>
-                            <tr class="border-black border-bottom server-row" x-data="{'highlighttime': 0}" scope="row"
-                                x-init="$watch('server.recentlyWentJoinable', (value, oldvalue) => {if(onRecentlyWentJoinableChanged(value, oldvalue, $el, server)) {highlighttime += 1; setTimeout(() => highlighttime -= 1, 10000)}})"
+                            <tr class="border-black border-bottom server-row" x-data="{ 'highlighttime': 0 }"
+                                scope="row"
+                                x-init="$watch('server.recentlyWentJoinable', (value, oldvalue) => { if(onRecentlyWentJoinableChanged(value, oldvalue, server)) { highlighttime += 1; setTimeout(() => highlighttime -= 1, 10000); }})"
                                 :class="[server.ping >= 999 ? 'greyout' : '', server.favorite ? 'favoriterow' : 'not-favoriterow']"
                                 :style="server.ping >= 999 ? 'pointer-events:none' : ''">
-                                <td class="highlight-column" :class="highlighttime >= 1 ? 'highlight-cell' : ''"></td>
+                                <td class="highlight-column" :class="highlighttime > 0 ? 'highlight-cell' : ''"></td>
                                 <td class="align-middle fs-4 status-cell">
                                     <span class="icons" x-html="getServerIcon(server)"></span>
                                 </td>
@@ -902,8 +917,9 @@ table.table.custom-table tbody tr td.playerlist table thead tr th {
                                 <td class="align-middle" :class="showPing ? '' : 'ping-hidden'"><span
                                         x-text="server.ping" style="pointer-events:none"></span>
                                 </td>
-                                <td class="align-middle fs-4"><a
-                                        :href="'steam://run/4920//+connect ' + server.hostname + ':' + server.port + '/'"
+                                <td class="align-middle fs-4">
+                                    <a href="#" title="Show server details" @click="selectServerId(server.id)">ℹ️</a>
+                                    <a :href="'steam://run/4920//+connect ' + server.hostname + ':' + server.port + '/'"
                                         title="Connect to server">🚀</a>
                                     <a href="#" @click="setFavorite(server, !server.favorite)"
                                         :class="server.favorite ? 'favorite' : 'not-favorite'"
@@ -914,7 +930,7 @@ table.table.custom-table tbody tr td.playerlist table thead tr th {
                                 <tr>
                                     <td colspan="100%" class="playerlist">
                                         <div class="detail-container">
-                                            <div>
+                                            <div class="boxshadow">
                                                 <table>
                                                     <thead>
                                                         <tr>
@@ -931,7 +947,7 @@ table.table.custom-table tbody tr td.playerlist table thead tr th {
                                                     </tbody>
                                                 </table>
                                             </div>
-                                            <div>
+                                            <div class="boxshadow">
                                                 <table>
                                                     <thead>
                                                         <tr>
@@ -955,20 +971,43 @@ table.table.custom-table tbody tr td.playerlist table thead tr th {
                                                 </table>
                                             </div>
                                             <div>
-                                                <template x-if="autojoinServerId === null">
-                                                    <button type="button" class="btn btn-outline-custom btn-lg"
-                                                        @click="autojoinServerId = server.id"
-                                                        x-bind:disabled="server.joinable">Autojoin</button>
-                                                </template>
-                                                <template x-if="autojoinServerId !== null">
-                                                    <button type="button" class="btn btn-outline-custom btn-lg active"
-                                                        @click="autojoinServerId = null"><span
-                                                            style="display: flex; align-items: center;">
-                                                            <div class="loader"></div> Stop
-                                                            Autojoin
-                                                        </span>
-                                                    </button>
-                                                </template>
+                                                <div class="autojoin">
+                                                    <template x-if="autojoinServerId === null">
+                                                        <button type="button"
+                                                            class="btn btn-outline-custom btn-lg autojoin-btn"
+                                                            @click="autojoinServerId = server.id"
+                                                            x-bind:disabled="server.joinable"
+                                                            :title="!server.joinable ? 'Click to enable autojoin for this server' : 'Server is not full, you can connect using the rocket instead'">Autojoin</button>
+                                                    </template>
+                                                    <template x-if="autojoinServerId !== null">
+                                                        <button type="button"
+                                                            class="btn btn-outline-custom btn-lg active autojoin-btn"
+                                                            @click="autojoinServerId = null"
+                                                            title="Waiting for server..."><span
+                                                                style="display: flex; align-items: center;">
+                                                                <div class="loader"></div> Stop
+                                                                Autojoin
+                                                            </span>
+                                                        </button>
+                                                    </template>
+                                                    <div>
+                                                        NS2 will automatically be launched and connect
+                                                        directly to the server.<br>
+                                                        • If NS2 is already running this will not work<br>
+                                                        • Your browser might ask for permission the first time
+                                                        (accessing steam:// links).
+                                                    </div>
+                                                </div>
+                                                <div class="serverinfo">
+                                                    <span>Server address: <span
+                                                            x-text="server.hostname + ':' + server.port"></span> <span
+                                                            title="Copy to clipboard"
+                                                            @click="navigator.clipboard.writeText(server.hostname + ':' + server.port)"
+                                                            style="cursor: pointer;">📋</span></span><br>
+                                                    <span>Ping: <span x-text="server.ping"></span> (from EU)</span><br>
+                                                    <span>Gamemode: <span x-text="server.gametype"
+                                                            class="text-uppercase"></span></span>
+                                                </div>
                                             </div>
                                         </div>
                                     </td>
