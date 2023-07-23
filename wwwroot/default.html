@@ -631,6 +631,11 @@ table.table.custom-table tbody tr td.playerlist table thead tr th {
                         for (let key in server) {
                             if (localServer[key] !== server[key]) {
                                 localServer[key] = server[key];
+                                if(key === "recentlyWentJoinable" && localServer[key] === true) {
+                                    localServer.highlighttime += 1;
+                                    setTimeout(() => localServer.highlighttime -= 1, 10000);
+                                    this.onJoinable(localServer);
+                                }
                             }
                         }
                     } else {
@@ -638,6 +643,7 @@ table.table.custom-table tbody tr td.playerlist table thead tr th {
                         server.favorite = window.instance.isFavorite(server);
                         server.rules = { "modlist": "" };
                         server.playerInfo = {};
+                        server.highlighttime = 0;
                         window.instance.servers.push(server);
                     }
                 },
@@ -665,23 +671,19 @@ table.table.custom-table tbody tr td.playerlist table thead tr th {
                     if (mmr <= 9999) return "/images/Tier_7.webp";
                     return "/images/Tier_unknown.webp";
                 },
-                onRecentlyWentJoinableChanged(value, oldvalue, server) {
-                    var becameJoinable = value && !oldvalue
-                    if (becameJoinable) {
-                        // Trigger sound
-                        if (this.soundEnabled && server.favorite) {
-                            this.playSound(server);
-                        }
-
-                        // Trigger autojoin
-                        if (this.autojoinServerId === server.id) {
-                            console.log("Autojoining server: " + server.serverName);
-                            window.open('steam://run/4920//+connect ' + server.hostname + ':' + server.port + '/');
-                            // Cancel autojoin now that we triggered it
-                            this.autojoinServerId = null;
-                        }
+                onJoinable(server) {
+                    // Trigger sound
+                    if (this.soundEnabled && server.favorite) {
+                        this.playSound(server);
                     }
-                    return becameJoinable;
+
+                    // Trigger autojoin
+                    if (this.autojoinServerId === server.id) {
+                        console.log("Autojoining server: " + server.serverName);
+                        window.open('steam://run/4920//+connect ' + server.hostname + ':' + server.port + '/');
+                        // Cancel autojoin now that we triggered it
+                        this.autojoinServerId = null;
+                    }
                 },
                 filterList(server, hideEmpty) {
                     // Determine is a server should be visible on the list
@@ -874,12 +876,10 @@ table.table.custom-table tbody tr td.playerlist table thead tr th {
                         x-for="server in servers.filter((v) => {return filterList(v, hideEmpty);}).sort((a,b) => sortList(a, b))"
                         :key="server.id">
                         <tbody>
-                            <tr class="border-black border-bottom server-row"
-                                x-data="{ 'highlighttime': 0, 'oldRecentlyJoinable': false }" scope="row"
-                                x-init="$watch('server.recentlyWentJoinable', (value) => { if(onRecentlyWentJoinableChanged(value, oldRecentlyJoinable, server)) { highlighttime += 1; setTimeout(() => highlighttime -= 1, 10000); } oldRecentlyJoinable = value; }); oldRecentlyJoinable = server.recentlyWentJoinable; console.log('setting up watch for server id: ' + server.id)"
+                            <tr class="border-black border-bottom server-row" scope="row"
                                 :class="[server.ping >= 999 ? 'greyout' : '', server.favorite ? 'favoriterow' : 'not-favoriterow']"
                                 :style="server.ping >= 999 ? 'pointer-events:none' : ''">
-                                <td class="highlight-column" :class="highlighttime > 0 ? 'highlight-cell' : ''"></td>
+                                <td class="highlight-column" :class="server.highlighttime > 0 ? 'highlight-cell' : ''"></td>
                                 <td class="align-middle fs-4 status-cell">
                                     <span class="icons" x-html="getServerIcon(server)"></span>
                                 </td>
