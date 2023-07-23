@@ -575,7 +575,7 @@ table.table.custom-table tbody tr td.playerlist table thead tr th {
                             // Loop over servers
                             data.forEach((entry) => this.updateServer(entry));
                             // Do a loop on local list to prune removed servers
-                            this.servers = this.servers.filter(server => data.find(v => v.id == server.id) !== null) // Does this mess with alpine proxy?
+                            this.servers = this.servers.filter(server => data.find(v => v.id === server.id) !== null) // Does this mess with alpine proxy?
                             this.heartbeat = !this.heartbeat;
                         });
                 },
@@ -625,7 +625,7 @@ table.table.custom-table tbody tr td.playerlist table thead tr th {
                 },
                 updateServer(server) {
                     // If server already in local list, update fields one by one
-                    let localServer = window.instance.servers.find(v => v.id == server.id);
+                    let localServer = window.instance.servers.find(v => v.id === server.id);
                     if (localServer) {
                         // Update existing server
                         for (let key in server) {
@@ -874,9 +874,9 @@ table.table.custom-table tbody tr td.playerlist table thead tr th {
                         x-for="server in servers.filter((v) => {return filterList(v, hideEmpty);}).sort((a,b) => sortList(a, b))"
                         :key="server.id">
                         <tbody>
-                            <tr class="border-black border-bottom server-row" x-data="{ 'highlighttime': 0 }"
-                                scope="row"
-                                x-init="$watch('server.recentlyWentJoinable', (value, oldvalue) => { if(onRecentlyWentJoinableChanged(value, oldvalue, server)) { highlighttime += 1; setTimeout(() => highlighttime -= 1, 10000); }})"
+                            <tr class="border-black border-bottom server-row"
+                                x-data="{ 'highlighttime': 0, 'oldRecentlyJoinable': false }" scope="row"
+                                x-init="$watch('server.recentlyWentJoinable', (value) => { if(onRecentlyWentJoinableChanged(value, oldRecentlyJoinable, server)) { highlighttime += 1; setTimeout(() => highlighttime -= 1, 10000); } oldRecentlyJoinable = value; }); oldRecentlyJoinable = server.recentlyWentJoinable; console.log('setting up watch for server id: ' + server.id)"
                                 :class="[server.ping >= 999 ? 'greyout' : '', server.favorite ? 'favoriterow' : 'not-favoriterow']"
                                 :style="server.ping >= 999 ? 'pointer-events:none' : ''">
                                 <td class="highlight-column" :class="highlighttime > 0 ? 'highlight-cell' : ''"></td>
