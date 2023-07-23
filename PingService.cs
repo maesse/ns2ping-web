@@ -269,6 +269,31 @@ public class PingService : BackgroundService
                 _logger.LogError(e, "ObjectDisposedException, trying to restart");
                 allowNewRun = true;
             }
+            catch (AggregateException e)
+            {
+                // Exceptions happening inside async/Task might be wrapped
+                e.Handle(inner =>
+                {
+                    if (inner is SocketException)
+                    {
+                        var innerEx = (SocketException)inner;
+                        if (innerEx.ErrorCode == 10055)
+                        {
+                            _logger.LogInformation("Woken from sleep? Waiting 3000ms before retrying");
+                            Thread.Sleep(3000);
+                        }
+                        _logger.LogError(innerEx, "SocketException, trying to restart");
+                        allowNewRun = true;
+                        return true;
+                    }
+                    else
+                    {
+                        _logger.LogError(inner, "Other exception -- exiting");
+                        running = false;
+                        return false;
+                    }
+                });
+            }
             catch (Exception e)
             {
                 _logger.LogError(e, "Other exception -- exiting");
