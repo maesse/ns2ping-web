@@ -45,7 +45,7 @@ public class PingService : BackgroundService
     public TimeSpan SleepTimeout = TimeSpan.FromSeconds(10);
     public TimeSpan WebsocketTimeout = TimeSpan.FromSeconds(60);
     private CancellationTokenSource sleepToken = new CancellationTokenSource();
-    private MasterServerQuery masterQuery = new MasterServerQuery();
+    private MasterServerQuery masterQuery;
     private static int printCounter = 0;
     private List<WebsocketInstance> webSocketList = new List<WebsocketInstance>();
     private readonly object webSocketListLock = new object();
@@ -55,6 +55,7 @@ public class PingService : BackgroundService
         watchedServers = new List<ServerRecord>();
         ep = new IPEndPoint(IPAddress.Any, 0);
         client = new UdpClient(ep);
+        masterQuery = new MasterServerQuery();
     }
 
     private void Init()
@@ -62,6 +63,7 @@ public class PingService : BackgroundService
         watchedServers = new List<ServerRecord>();
         ep = new IPEndPoint(IPAddress.Any, 0);
         client = new UdpClient(ep);
+        masterQuery = new MasterServerQuery();
     }
 
     private void AddServer(ServerRecord record)
@@ -242,7 +244,7 @@ public class PingService : BackgroundService
 
                     if (delayTask.IsCanceled)
                     {
-                        _logger.LogDebug("DelayTask was cancelled!");
+                        _logger.LogWarning("DelayTask was cancelled!");
                         receiveTask = client.ReceiveAsync();
                     }
 
@@ -303,12 +305,12 @@ public class PingService : BackgroundService
 
             if (allowNewRun)
             {
-                _logger.LogDebug("Reinitializing PingService");
+                _logger.LogInformation("Reinitializing PingService");
                 Init();
             }
         } while (allowNewRun);
 
-        _logger.LogDebug("Exiting PingService");
+        _logger.LogInformation("Exiting PingService");
         running = false;
     }
 
