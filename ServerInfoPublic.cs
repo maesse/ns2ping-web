@@ -15,7 +15,7 @@ public class ServerInfoPublic
     public int Port { get; private set; }
     public string ServerName { get; private set; }
     public int Ping { get; private set; }
-    public string CountryCode { get; private set; }
+    public string? CountryCode { get; private set; }
     public int Visibility { get; private set; }
     public string Gametype { get; private set; }
 

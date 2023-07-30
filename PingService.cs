@@ -27,8 +27,26 @@ public class PingService : BackgroundService
                 var buffer = new byte[128];
                 var receiveResult = await webSocket.ReceiveAsync(
                     new ArraySegment<byte>(buffer), CancellationToken.None);
-                //Console.WriteLine("Received data from websocket: " + receiveResult);
-                lastKeepAlive = DateTime.Now;
+                if (receiveResult.MessageType == WebSocketMessageType.Close)
+                {
+                    await webSocket.CloseOutputAsync(WebSocketCloseStatus.NormalClosure, null, CancellationToken.None);
+                    socketFinishedTcs.SetResult();
+                    break;
+                }
+                else
+                {
+                    //Console.WriteLine("Received data from websocket: " + receiveResult);
+                    lastKeepAlive = DateTime.Now;
+                }
+
+            }
+        }
+
+        internal async void SendClose()
+        {
+            if (webSocket.State == WebSocketState.Open)
+            {
+                await webSocket.CloseAsync(WebSocketCloseStatus.Empty, null, CancellationToken.None);
             }
         }
     }
@@ -84,9 +102,11 @@ public class PingService : BackgroundService
             sleeping = false;
             // Reset Token
             sleepToken = new CancellationTokenSource();
-            client.Close();
+            var oldClient = client;
             client = new UdpClient(ep);
             activeToken.Cancel();
+            Thread.Sleep(50); // Dirty hack
+            oldClient.Close();
         }
         lastRequest = DateTime.Now;
     }
@@ -308,6 +328,13 @@ public class PingService : BackgroundService
             if (allowNewRun)
             {
                 _logger.LogInformation("Reinitializing PingService");
+                lock (webSocketListLock)
+                {
+                    foreach (var sock in webSocketList)
+                    {
+                        sock.SendClose();
+                    }
+                }
                 Init();
             }
         } while (allowNewRun);
@@ -402,6 +429,7 @@ public class PingService : BackgroundService
 
     internal WebsocketInstance AddSocket(WebSocket webSocket, TaskCompletionSource socketFinishedTcs)
     {
+        StopSleep();
         var ws = new WebsocketInstance(webSocket, socketFinishedTcs);
         lock (webSocketListLock)
         {
