@@ -83,7 +83,7 @@
                             // Loop over servers
                             data.forEach((entry) => this.updateServer(entry));
                             // Do a loop on local list to prune removed servers
-                            this.servers = this.servers.filter(server => data.find(v => v.id === server.id) !== null) // Does this mess with alpine proxy?
+                            this.servers = this.servers.filter(server => data.find(v => v.id === server.id))
                             this.heartbeat = !this.heartbeat;
                         });
                 },
@@ -138,7 +138,11 @@
                         // Update existing server
                         for (let key in server) {
                             if (localServer[key] !== server[key]) {
+                                // Trying to keep alpine.js reactive engine happy by doing it like this
+                                // change listeners will only be called if the value actually changes
                                 localServer[key] = server[key];
+
+                                // since $watch doesn't seem to be working right
                                 if(key === "recentlyWentJoinable" && localServer[key] === true) {
                                     localServer.highlighttime += 1;
                                     setTimeout(() => localServer.highlighttime -= 1, 10000);
@@ -149,6 +153,7 @@
                     } else {
                         // Else add this new server to the local list
                         server.favorite = window.instance.isFavorite(server);
+                        // Prepare some fields that will be populated locally
                         server.rules = { "modlist": "" };
                         server.playerInfo = {};
                         server.highlighttime = 0;
@@ -274,7 +279,7 @@
                         .then(data => {
                             var result = this.servers.find(v => v.id === this.selectedId);
                             if (result != null) {
-                                result.playerinfo = data.playerInfo.entries;
+                                result.playerInfo = data.playerInfo;
                                 result.rules = data.rules;
                             }
                         });
@@ -282,8 +287,8 @@
                 timerTickServerInfo() {
                     if (this.selectedId != null) {
                         var result = this.servers.find(v => v.id === this.selectedId);
-                        if (result != null) {
-                            result.playerinfo.forEach(v => v.duration += 1);
+                        if (result != null && result.playerInfo != null) {
+                            result.playerInfo.forEach(v => v.duration += 1);
                         }
                     }
                 },
@@ -465,7 +470,7 @@
                                                         </tr>
                                                     </thead>
                                                     <tbody>
-                                                        <template x-for="player in server.playerinfo"
+                                                        <template x-for="player in server.playerInfo"
                                                             :key="player.index">
                                                             <tr>
                                                                 <td x-text="player.name"></td>

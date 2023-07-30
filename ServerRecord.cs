@@ -79,6 +79,7 @@ namespace MyApp
             payload = Writer.Append(payload, challenge);
 
             int bytesSent = client.Send(payload, payload.Length, EndPoint);
+            NetworkStats.SentBytes(bytesSent);
             if (bytesSent != payload.Length) throw new Exception($"UDP send failed, bytesSent({bytesSent}) != payload.Length({payload.Length})");
 
             lastRequestTime = DateTime.Now;
@@ -99,6 +100,7 @@ namespace MyApp
             payload = Writer.Append(payload, challenge);
 
             int bytesSent = client.Send(payload, payload.Length, EndPoint);
+            NetworkStats.SentBytes(bytesSent);
             if (bytesSent != payload.Length) throw new Exception($"UDP send failed, bytesSent({bytesSent}) != payload.Length({payload.Length})");
 
             lastRequestTime = DateTime.Now;
@@ -121,6 +123,7 @@ namespace MyApp
             }
 
             int bytesSent = client.Send(payload, payload.Length, EndPoint);
+            NetworkStats.SentBytes(bytesSent);
             if (bytesSent != payload.Length) throw new Exception($"UDP send failed, bytesSent({bytesSent}) != payload.Length({payload.Length})");
 
             lastRequestTime = DateTime.Now;

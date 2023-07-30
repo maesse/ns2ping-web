@@ -49,6 +49,7 @@ public class PingService : BackgroundService
     private static int printCounter = 0;
     private List<WebsocketInstance> webSocketList = new List<WebsocketInstance>();
     private readonly object webSocketListLock = new object();
+
     public PingService(ILogger<PingService> logger)
     {
         _logger = logger;
@@ -219,6 +220,7 @@ public class PingService : BackgroundService
                     {
                         // Handle packet response
                         var result = receiveTask.Result;
+                        NetworkStats.ReceivedBytes(result.Buffer.Length);
                         _logger.LogTrace($"Handling UDP response from {result.RemoteEndPoint}");
                         if (IPEndPoint.Equals(result.RemoteEndPoint, masterQuery.EndPoint))
                         {
@@ -389,6 +391,8 @@ public class PingService : BackgroundService
         {
             _logger.LogInformation($"Current WebSocket clients: {webSocketList.Count}");
         }
+        _logger.LogInformation($"Network stats: \n {NetworkStats.GetInformation()}");
+        NetworkStats.Reset();
     }
 
     private static async Task<Task> WaitAny(Task task1, Task task2)
@@ -406,13 +410,13 @@ public class PingService : BackgroundService
         return ws;
     }
 
-    internal PlayerInfo? GetPlayerInfo(int id)
+    internal List<PlayerInfo.PlayerInfoEntry>? GetPlayerInfo(int id)
     {
         lock (watchedServersLock)
         {
-            var record = watchedServers.FirstOrDefault((s) => s!.ID == id, null);
+            var record = watchedServers.FirstOrDefault((s) => s!.ID == id && s.PlayerInfo != null, null);
             if (record == null) return null;
-            return record.PlayerInfo;
+            return record.PlayerInfo!.Entries;
         }
     }
 

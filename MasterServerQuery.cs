@@ -51,6 +51,7 @@ namespace MyApp
             payload = Writer.AppendCString(payload, @"\appid\4920");
 
             int bytesSent = client.Send(payload, payload.Length, EndPoint);
+            NetworkStats.SentBytes(bytesSent);
             if (bytesSent != payload.Length) throw new Exception($"UDP send failed, bytesSent({bytesSent}) != payload.Length({payload.Length})");
         }
 
