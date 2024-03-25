@@ -31,6 +31,7 @@
     </style>
     <link href="css/bootstrap.min_stripped.css" rel="stylesheet">
     <link rel="stylesheet" href="css/style.css">
+    <link href="https://emoji-css.afeld.me/emoji.css" rel="stylesheet">
     <script>
         var instance = null;
 
@@ -169,9 +170,9 @@
                     this.connectWebsocket();
                 },
                 getServerIcon(server) {
-                    if (server.ping >= 999) return '<span title="Server not responding">💀</span>';
-                    if (server.playersIngame <= 0) return '<span title="Server is empty">💤</span>';
-                    return (server.joinable ? '<span title="Server is joinable">✔️</span>' : '<span title="Server is full">✋</span>') + (server.recentlyWentJoinable ? '<span title="Recently became joinable">🛎️</span>' : '');
+                    if (server.ping >= 999) return '<span title="Server not responding"><i class="em em-skull_and_crossbones" aria-role="presentation" aria-label=""></i></span>';
+                    if (server.playersIngame <= 0) return '<span title="Server is empty"><i class="em em-zzz" aria-role="presentation" aria-label="SLEEPING SYMBOL"></i></span>';
+                    return (server.joinable ? '<span title="Server is joinable"><i class="em em-white_check_mark" aria-role="presentation"></i></span>' : '<span title="Server is full"><i class="em em-no_entry" aria-role="presentation" aria-label="NO ENTRY"></i></span>') + (server.recentlyWentJoinable && server.favorite ? '<span title="Recently became joinable"><i class="em em-bell" aria-role="presentation" aria-label=""></i></span>' : '');
                 },
                 getTierIconUrl(mmr) {
                     if (mmr === null || mmr === "N/A") return "/images/Tier_unknown.webp";
@@ -325,9 +326,9 @@
                         x-init="$watch('heartbeat', () => { pulse = false; $nextTick(() => { pulse = true; }); });"
                         x-on:click="getServers()"
                         :class="[pulse ? 'pulse-anim' : '', connected ? '' : 'status-heart-disc']"
-                        title="The heart beats when new data is received">❤️</span><br>
+                        title="The heart beats when new data is received"><i class="em em-heart" aria-role="presentation" aria-label="HEAVY BLACK HEART"></i></span><br>
                     Realtime server browser for Natural Selection 2.<br>
-                    Select your favorite servers with the ❤️ button to get a sound notification when there is room to
+                    Select your favorite servers with the <i class="em em-heart" aria-role="presentation" aria-label="HEAVY BLACK HEART"></i> button to get a sound notification when there is room to
                     join
                 </div>
                 <div class="options-block text-secondary">
@@ -393,7 +394,7 @@
                                 :class="[server.ping >= 999 ? 'greyout' : '', server.favorite ? 'favoriterow' : 'not-favoriterow']"
                                 :style="server.ping >= 999 ? 'pointer-events:none' : ''">
                                 <td class="highlight-column" :class="server.highlighttime > 0 ? 'highlight-cell' : ''"></td>
-                                <td class="align-middle fs-4 status-cell">
+                                <td class="align-middle fs-4 status-cell" style="white-space: nowrap;">
                                     <span class="icons" x-html="getServerIcon(server)"></span>
                                 </td>
                                 <template x-if="server.ping < 999">
@@ -421,8 +422,8 @@
                                         <span class="tier" x-text="server.mmr" style="pointer-events:none"></span>
                                     </div>
                                 </td>
-                                <td class="align-middle"><span x-text="getFlagEmoji(server.countryCode)"
-                                        x-bind:title="'Ping (from EU): ' + server.ping"></span> <span class="servername"
+                                <td class="align-middle"><span 
+                                        x-bind:title="'Ping (from EU): ' + server.ping"><i :class="'em em-flag-' + server.countryCode.toLowerCase()" aria-role="presentation" aria-label="Guyana Flag"></i></span> <span class="servername"
                                         x-text="server.serverName" @click="selectServerId(server.id)"></span></td>
                                 <td class="align-middle"><span class="text-uppercase" x-text="server.mapName"
                                         style="pointer-events:none"></span>
@@ -430,13 +431,13 @@
                                 <td class="align-middle" :class="showPing ? '' : 'ping-hidden'"><span
                                         x-text="server.ping" style="pointer-events:none"></span>
                                 </td>
-                                <td class="align-middle fs-4">
-                                    <a href="#" title="Show server details" @click="selectServerId(server.id)">ℹ️</a>
+                                <td class="align-middle fs-4" style="white-space: nowrap;">
+                                    <a href="#" title="Show server details" @click="selectServerId(server.id)"><i class="em em-information_source" aria-role="presentation" aria-label="INFORMATION SOURCE"></i></a>
                                     <a :href="'steam://run/4920//+connect ' + server.hostname + ':' + server.port + '/'"
-                                        title="Connect to server">🚀</a>
+                                        title="Connect to server"><i class="em em-rocket" aria-role="presentation" aria-label="ROCKET"></i></a>
                                     <a href="#" @click="setFavorite(server, !server.favorite)"
                                         :class="server.favorite ? 'favorite' : 'not-favorite'"
-                                        title="Toggle favorite">❤️</a>
+                                        title="Toggle favorite"><i class="em em-hearts" aria-role="presentation" aria-label="BLACK HEART SUIT"></i></a>
                                 </td>
                             </tr>
                             <template x-if="selectedId === server.id">
@@ -504,8 +505,9 @@
                                                         </button>
                                                     </template>
                                                     <div>
+                                                        <p x-show="server.joinable" style="background-color: var(--bs-dark)">Server is not full, you can connect now using the rocket <i class="em em-rocket" aria-role="presentation" aria-label="ROCKET"></i> instead</p>
                                                         NS2 will automatically be launched and connect
-                                                        directly to the server.<br>
+                                                        directly to the server where there is a free slot (including spectator slot).<br>
                                                         • If NS2 is already running this will not work<br>
                                                         • Your browser might ask for permission the first time
                                                         (accessing steam:// links).
@@ -516,7 +518,7 @@
                                                             x-text="server.hostname + ':' + server.port"></span> <span
                                                             title="Copy to clipboard"
                                                             @click="navigator.clipboard.writeText(server.hostname + ':' + server.port)"
-                                                            style="cursor: pointer;">📋</span></span><br>
+                                                            style="cursor: pointer;"><i class="em em-clipboard" aria-role="presentation" aria-label="CLIPBOARD"></i></span></span><br>
                                                     <span>Ping: <span x-text="server.ping"></span> (from EU)</span><br>
                                                     <span>Gamemode: <span x-text="server.gametype"
                                                             class="text-uppercase"></span></span>
