@@ -158,7 +158,7 @@ namespace MyApp
                 }
                 else
                 {
-                    return msSinceLastRequest > 3000;
+                    return msSinceLastRequest > 1000;
                 }
 
             }

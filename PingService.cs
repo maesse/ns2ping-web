@@ -214,10 +214,10 @@ public class PingService : BackgroundService
                     UpdateServers();
 
                     // Handle sleep
-                    int delayTime = 1000;
+                    int delayTime = 500;
                     if (DateTime.Now - lastRequest > SleepTimeout)
                     {
-                        delayTime = 1000 * 60 * 24;
+                        delayTime = 1000 * 60 * 60 * 24;
                         sleeping = true;
                         //sleepToken = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
                         _logger.LogInformation("PingService going to sleep");
