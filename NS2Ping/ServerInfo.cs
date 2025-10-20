@@ -1,3 +1,4 @@
+namespace NS2Ping;
 internal class ServerInfo
 {
 

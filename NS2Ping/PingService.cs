@@ -1,10 +1,10 @@
-using System.Diagnostics;
+namespace NS2Ping;
 using System.Net;
 using System.Net.Sockets;
 using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
-using MyApp;
+
 
 public class PingService : BackgroundService
 {
@@ -35,7 +35,7 @@ public class PingService : BackgroundService
                 }
                 else
                 {
-                    //Console.WriteLine("Received data from websocket: " + receiveResult);
+                    _logger.LogDebug("Received data from websocket: " + receiveResult);
                     lastKeepAlive = DateTime.Now;
                 }
 
@@ -51,7 +51,7 @@ public class PingService : BackgroundService
         }
     }
 
-    private readonly ILogger<PingService> _logger;
+    public static ILogger<PingService> _logger;
 
     public UdpClient client;
     public IPEndPoint ep;
@@ -63,7 +63,7 @@ public class PingService : BackgroundService
     public TimeSpan SleepTimeout = TimeSpan.FromSeconds(10);
     public TimeSpan WebsocketTimeout = TimeSpan.FromSeconds(60);
     private CancellationTokenSource sleepToken = new CancellationTokenSource();
-    private MasterServerQuery masterQuery;
+    private MasterServerQueryWeb masterQuery;
     private static int printCounter = 0;
     private List<WebsocketInstance> webSocketList = new List<WebsocketInstance>();
     private readonly object webSocketListLock = new object();
@@ -74,7 +74,7 @@ public class PingService : BackgroundService
         watchedServers = new List<ServerRecord>();
         ep = new IPEndPoint(IPAddress.Any, 0);
         client = new UdpClient(ep);
-        masterQuery = new MasterServerQuery();
+        masterQuery = new MasterServerQueryWeb();
     }
 
     private void Init()
@@ -82,7 +82,7 @@ public class PingService : BackgroundService
         watchedServers = new List<ServerRecord>();
         ep = new IPEndPoint(IPAddress.Any, 0);
         client = new UdpClient(ep);
-        masterQuery = new MasterServerQuery();
+        masterQuery = new MasterServerQueryWeb();
     }
 
     private void AddServer(ServerRecord record)
@@ -153,6 +153,7 @@ public class PingService : BackgroundService
         if (masterQuery.ReadyForRefresh())
         {
             masterQuery.StartRefresh(client);
+            HandleNewServers();
         }
 
         lock (watchedServersLock)
@@ -180,7 +181,7 @@ public class PingService : BackgroundService
                 {
                     // Decrement port by one since we are using the game server port here, not the query port
                     var gameaddr = new IPEndPoint(addr.Address, addr.Port - 1);
-                    if (gameaddr.ToString().Equals("157.90.129.121:28315"))
+                    if (gameaddr.ToString().Equals("157.90.129.121:28315") || gameaddr.ToString().Equals("185.83.152.202:28315"))
                     {
                         // Special case 5 max spec for TTO
                         watchedServers.Add(new ServerRecord(_logger, gameaddr.ToString(), 5));
@@ -227,7 +228,7 @@ public class PingService : BackgroundService
                     if (receiveTask.IsFaulted)
                     {
                         _logger.LogWarning("ReceiveTask faulted!");
-                        Console.WriteLine(receiveTask.Exception);
+                        _logger.LogWarning(receiveTask.Exception.ToString());
                     }
                     if (receiveTask.IsCompleted)
                     {
@@ -242,23 +243,10 @@ public class PingService : BackgroundService
                         var result = receiveTask.Result;
                         NetworkStats.ReceivedBytes(result.Buffer.Length);
                         _logger.LogTrace($"Handling UDP response from {result.RemoteEndPoint}");
-                        if (IPEndPoint.Equals(result.RemoteEndPoint, masterQuery.EndPoint))
+                        lock (watchedServersLock)
                         {
-                            if (masterQuery.HandleResponse(result.Buffer, client))
-                            {
-                                HandleNewServers();
-                            }
-                        }
-                        else
-                        {
-                            lock (watchedServersLock)
-                            {
-                                var server = watchedServers.SingleOrDefault(v => IPEndPoint.Equals(v!.EndPoint, result.RemoteEndPoint), null);
-                                if (server != null)
-                                {
-                                    server.HandleResponse(result.Buffer, client);
-                                }
-                            }
+                            var server = watchedServers.SingleOrDefault(v => IPEndPoint.Equals(v!.EndPoint, result.RemoteEndPoint), null);
+                            server?.HandleResponse(result.Buffer, client);
                         }
 
                         receiveTask = client.ReceiveAsync();

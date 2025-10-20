@@ -1,3 +1,4 @@
+namespace NS2Ping;
 using System.Net;
 using System.Text.Json;
 using System.Text.Json.Serialization;

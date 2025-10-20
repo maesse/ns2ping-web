@@ -1,4 +1,4 @@
-using MyApp;
+namespace NS2Ping;
 
 public class PlayerInfo
 {

@@ -1,5 +1,5 @@
+namespace NS2Ping;
 using System.Globalization;
-using MyApp;
 
 public class ServerRules
 {

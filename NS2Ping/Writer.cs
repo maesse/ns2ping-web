@@ -1,3 +1,4 @@
+namespace NS2Ping;
 using System.Text;
 
 public class Writer

@@ -1,3 +1,4 @@
+namespace NS2Ping;
 public class NetworkStats
 {
     private static DateTime lastReset = DateTime.Now;
