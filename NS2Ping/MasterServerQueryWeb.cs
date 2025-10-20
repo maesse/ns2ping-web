@@ -41,11 +41,11 @@ public class MasterServerQueryWeb
 
     public bool ReadyForRefresh()
     {
-        if (DateTime.Now - LastMasterQuery > MasterQueryTimeout)
-        {
-            PingService._logger.LogWarning("Master server query timed out or never finished");
-            LastMasterQuery = DateTime.Now - TimeSpan.FromDays(1);
-        }
+        // if (DateTime.Now - LastMasterQuery > MasterQueryTimeout)
+        // {
+        //     PingService._logger.LogWarning("Master server query timed out or never finished");
+        //     LastMasterQuery = DateTime.Now - TimeSpan.FromDays(1);
+        // }
 
         return DateTime.Now - LastMasterQuery > MasterQueryFrequency;
     }

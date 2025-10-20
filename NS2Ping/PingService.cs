@@ -2,6 +2,7 @@ namespace NS2Ping;
 using System.Net;
 using System.Net.Sockets;
 using System.Net.WebSockets;
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
 
@@ -13,45 +14,77 @@ public class PingService : BackgroundService
         public WebSocket webSocket { get; }
         public TaskCompletionSource socketFinishedTcs { get; }
         public DateTime lastKeepAlive { get; set; }
+
+        // Serialize sends per socket to avoid concurrent SendAsync
+        private readonly SemaphoreSlim _sendLock = new(1, 1);
+
         public WebsocketInstance(WebSocket webSocket, TaskCompletionSource socketFinishedTcs)
         {
             this.webSocket = webSocket;
             this.socketFinishedTcs = socketFinishedTcs;
-            this.lastKeepAlive = DateTime.Now;
+            this.lastKeepAlive = DateTime.UtcNow;
         }
 
-        public async Task Read()
+        public async Task Read(CancellationToken ct)
         {
-            while (!webSocket.CloseStatus.HasValue)
+            var buffer = new byte[1024];
+            try
             {
-                var buffer = new byte[128];
-                var receiveResult = await webSocket.ReceiveAsync(
-                    new ArraySegment<byte>(buffer), CancellationToken.None);
-                if (receiveResult.MessageType == WebSocketMessageType.Close)
+                while (!ct.IsCancellationRequested && webSocket.State == WebSocketState.Open)
                 {
-                    await webSocket.CloseOutputAsync(WebSocketCloseStatus.NormalClosure, null, CancellationToken.None);
-                    socketFinishedTcs.SetResult();
-                    break;
-                }
-                else
-                {
-                    _logger.LogDebug("Received data from websocket: " + receiveResult);
-                    lastKeepAlive = DateTime.Now;
-                }
+                    var receiveResult = await webSocket.ReceiveAsync(
+                        new ArraySegment<byte>(buffer), ct);
 
+                    if (receiveResult.MessageType == WebSocketMessageType.Close)
+                    {
+                        await webSocket.CloseOutputAsync(WebSocketCloseStatus.NormalClosure, null, CancellationToken.None);
+                        socketFinishedTcs.TrySetResult();
+                        break;
+                    }
+
+                    // Any message counts as keep-alive
+                    lastKeepAlive = DateTime.UtcNow;
+                }
+            }
+            catch (OperationCanceledException) { /* normal on shutdown */ }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "WebSocket receive error");
+                socketFinishedTcs.TrySetResult();
             }
         }
 
-        internal async void SendClose()
+        public async Task SendCloseAsync()
         {
-            if (webSocket.State == WebSocketState.Open)
+            if (webSocket.State == WebSocketState.Open || webSocket.State == WebSocketState.CloseReceived)
             {
-                await webSocket.CloseAsync(WebSocketCloseStatus.Empty, null, CancellationToken.None);
+                try { await webSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, null, CancellationToken.None); }
+                catch { /* ignore */ }
+            }
+        }
+
+        public async Task<bool> TrySendAsync(ArraySegment<byte> payload, CancellationToken ct)
+        {
+            await _sendLock.WaitAsync(ct);
+            try
+            {
+                if (webSocket.State != WebSocketState.Open) return false;
+                await webSocket.SendAsync(payload, WebSocketMessageType.Text, true, ct);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "WebSocket send failed");
+                return false;
+            }
+            finally
+            {
+                _sendLock.Release();
             }
         }
     }
 
-    public static ILogger<PingService> _logger;
+    public static ILogger<PingService> _logger = Microsoft.Extensions.Logging.Abstractions.NullLogger<PingService>.Instance;
 
     public UdpClient client;
     public IPEndPoint ep;
@@ -59,14 +92,18 @@ public class PingService : BackgroundService
     private readonly object watchedServersLock = new object();
     public bool running = false;
     public bool sleeping = false;
-    private DateTime lastRequest = DateTime.Now;
-    public TimeSpan SleepTimeout = TimeSpan.FromSeconds(10);
+    private DateTime lastRequest = DateTime.UtcNow;
+    public TimeSpan SleepTimeout = TimeSpan.FromSeconds(20);
     public TimeSpan WebsocketTimeout = TimeSpan.FromSeconds(60);
     private CancellationTokenSource sleepToken = new CancellationTokenSource();
     private MasterServerQueryWeb masterQuery;
     private static int printCounter = 0;
     private List<WebsocketInstance> webSocketList = new List<WebsocketInstance>();
     private readonly object webSocketListLock = new object();
+
+    // Recreate the UDP socket after wake (Linux often needs this)
+    private readonly bool _recreateSocketOnWake = true || OperatingSystem.IsLinux();
+    private volatile bool _recreateRequested = false;
 
     public PingService(ILogger<PingService> logger)
     {
@@ -82,7 +119,8 @@ public class PingService : BackgroundService
         watchedServers = new List<ServerRecord>();
         ep = new IPEndPoint(IPAddress.Any, 0);
         client = new UdpClient(ep);
-        masterQuery = new MasterServerQueryWeb();
+        HandleNewServers();
+        // masterQuery = new MasterServerQueryWeb();
     }
 
     private void AddServer(ServerRecord record)
@@ -100,15 +138,21 @@ public class PingService : BackgroundService
             _logger.LogInformation("PingService waking up!");
             var activeToken = sleepToken;
             sleeping = false;
-            // Reset Token
+
+            // Request socket recreation on wake on platforms that need it
+            if (_recreateSocketOnWake)
+            {
+                _recreateRequested = true;
+            }
+
+            // Reset/replace sleep token
             sleepToken = new CancellationTokenSource();
-            var oldClient = client;
-            client = new UdpClient(ep);
-            activeToken.Cancel();
-            Thread.Sleep(50); // Dirty hack
-            oldClient.Close();
+
+            // Cancel and dispose the old token source to avoid leaks
+            try { activeToken.Cancel(); } catch { /* ignore */ }
+            activeToken.Dispose();
         }
-        lastRequest = DateTime.Now;
+        lastRequest = DateTime.UtcNow;
     }
 
     public List<ServerInfoPublic> GetServerInfos()
@@ -216,49 +260,68 @@ public class PingService : BackgroundService
 
                     // Handle sleep
                     int delayTime = 500;
-                    if (DateTime.Now - lastRequest > SleepTimeout)
+                    if (DateTime.UtcNow - lastRequest > SleepTimeout)
                     {
                         delayTime = 1000 * 60 * 60 * 24;
                         sleeping = true;
-                        //sleepToken = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
                         _logger.LogInformation("PingService going to sleep");
                     }
 
-                    var delayTask = Task.Delay(delayTime, CancellationTokenSource.CreateLinkedTokenSource(sleepToken.Token, stoppingToken).Token);
+                    using var linked = CancellationTokenSource.CreateLinkedTokenSource(sleepToken.Token, stoppingToken);
+                    var delayTask = Task.Delay(delayTime, linked.Token);
+
                     if (receiveTask.IsFaulted)
                     {
                         _logger.LogWarning("ReceiveTask faulted!");
-                        _logger.LogWarning(receiveTask.Exception.ToString());
-                    }
-                    if (receiveTask.IsCompleted)
-                    {
-                        _logger.LogWarning("Does this ever run?");
+                        _logger.LogWarning(receiveTask.Exception?.ToString());
+                        // restart receive loop on fault
                         receiveTask = client.ReceiveAsync();
                     }
-
 
                     while (await Task.WhenAny(delayTask, receiveTask) == receiveTask)
                     {
-                        // Handle packet response
-                        var result = receiveTask.Result;
-                        NetworkStats.ReceivedBytes(result.Buffer.Length);
-                        _logger.LogTrace($"Handling UDP response from {result.RemoteEndPoint}");
-                        lock (watchedServersLock)
+                        try
                         {
-                            var server = watchedServers.SingleOrDefault(v => IPEndPoint.Equals(v!.EndPoint, result.RemoteEndPoint), null);
-                            server?.HandleResponse(result.Buffer, client);
+                            var result = await receiveTask; // throws if faulted/canceled
+                            NetworkStats.ReceivedBytes(result.Buffer.Length);
+                            _logger.LogTrace($"Handling UDP response from {result.RemoteEndPoint}");
+                            lock (watchedServersLock)
+                            {
+                                var server = watchedServers.SingleOrDefault(v => IPEndPoint.Equals(v!.EndPoint, result.RemoteEndPoint), null);
+                                server?.HandleResponse(result.Buffer, client);
+                            }
                         }
-
-                        receiveTask = client.ReceiveAsync();
+                        catch (ObjectDisposedException ex)
+                        {
+                            _logger.LogDebug(ex, "Socket disposed during receive");
+                            throw; // handled by outer catch to re-init if needed
+                        }
+                        catch (SocketException ex)
+                        {
+                            _logger.LogDebug(ex, "Socket exception during receive");
+                            throw;
+                        }
+                        finally
+                        {
+                            receiveTask = client.ReceiveAsync();
+                        }
                     }
 
                     if (delayTask.IsCanceled)
                     {
-                        _logger.LogWarning("DelayTask was cancelled!");
-                        receiveTask = client.ReceiveAsync();
+                        _logger.LogDebug("DelayTask was cancelled");
+                        if (_recreateRequested)
+                        {
+                            _logger.LogInformation("Recreating UDP socket after wake");
+                            var oldClient = client;
+                            client = new UdpClient(ep);
+                            try { oldClient.Dispose(); } catch { /* ignore */ }
+                            receiveTask = client.ReceiveAsync();
+                            _recreateRequested = false;
+                        }
                     }
 
-                    UpdateWebsockets();
+                    await UpdateWebsocketsAsync(stoppingToken);
 
                     if (printCounter++ % 10 == 0)
                     {
@@ -271,7 +334,8 @@ public class PingService : BackgroundService
                 if (e.ErrorCode == 10055)
                 {
                     _logger.LogInformation("Woken from sleep? Waiting 3000ms before retrying");
-                    Thread.Sleep(3000);
+                    try { await Task.Delay(3000, stoppingToken); } catch (OperationCanceledException) { }
+
                 }
                 _logger.LogError(e, "SocketException, trying to restart");
                 allowNewRun = true;
@@ -292,7 +356,7 @@ public class PingService : BackgroundService
                         if (innerEx.ErrorCode == 10055)
                         {
                             _logger.LogInformation("Woken from sleep? Waiting 3000ms before retrying");
-                            Thread.Sleep(3000);
+                            try { Task.Delay(3000, stoppingToken).Wait(stoppingToken); } catch { }
                         }
                         _logger.LogError(innerEx, "SocketException, trying to restart");
                         allowNewRun = true;
@@ -316,13 +380,19 @@ public class PingService : BackgroundService
             if (allowNewRun)
             {
                 _logger.LogInformation("Reinitializing PingService");
+
+                // Close all websockets outside the lock and await
+                List<WebsocketInstance> toClose;
                 lock (webSocketListLock)
                 {
-                    foreach (var sock in webSocketList)
-                    {
-                        sock.SendClose();
-                    }
+                    toClose = webSocketList.ToList();
+                    webSocketList.Clear();
                 }
+                try
+                {
+                    await Task.WhenAll(toClose.Select(s => s.SendCloseAsync()));
+                }
+                catch { /* ignore */ }
                 Init();
             }
         } while (allowNewRun);
@@ -331,13 +401,14 @@ public class PingService : BackgroundService
         running = false;
     }
 
-    private void UpdateWebsockets()
+    private async Task UpdateWebsocketsAsync(CancellationToken ct)
     {
+        List<WebsocketInstance> socketsCopy;
         lock (webSocketListLock)
         {
-            // Clean closed sockets
+            // Clean closed/expired sockets
             var cleanupList = new List<WebsocketInstance>();
-            var now = DateTime.Now;
+            var now = DateTime.UtcNow;
             foreach (var socket in webSocketList)
             {
                 if (socket.socketFinishedTcs.Task.IsCompleted)
@@ -349,23 +420,22 @@ public class PingService : BackgroundService
                 if (now - socket.lastKeepAlive > WebsocketTimeout)
                 {
                     _logger.LogInformation("Timeout from webSocket " + socket.webSocket);
-                    socket.socketFinishedTcs.SetResult();
+                    socket.socketFinishedTcs.TrySetResult();
                     cleanupList.Add(socket);
                 }
             }
             foreach (var socket in cleanupList)
             {
                 webSocketList.Remove(socket);
+                _ = socket.SendCloseAsync(); // fire-and-forget close
             }
 
             if (webSocketList.Count == 0) return;
+            socketsCopy = webSocketList.ToList();
         }
 
-        // Gather updated servers
         var serverList = GetServerInfosWithChanges();
         if (serverList.Count == 0) return;
-
-        // push updates to all websockets
 
         JsonSerializerOptions options = new()
         {
@@ -375,13 +445,17 @@ public class PingService : BackgroundService
         var payload = JsonSerializer.Serialize(serverList, options);
         var bytes = Encoding.UTF8.GetBytes(payload);
         var arraySegment = new ArraySegment<byte>(bytes);
-        lock (webSocketListLock)
+
+        // Send outside the lock, serialize per-socket sends
+        var sendTasks = socketsCopy.Select(async s =>
         {
-            foreach (var socket in webSocketList)
+            var ok = await s.TrySendAsync(arraySegment, ct);
+            if (!ok)
             {
-                socket.webSocket.SendAsync(arraySegment, WebSocketMessageType.Text, true, CancellationToken.None);
+                s.socketFinishedTcs.TrySetResult();
             }
-        }
+        });
+        await Task.WhenAll(sendTasks);
     }
 
     private void PrintServers()
@@ -408,11 +482,6 @@ public class PingService : BackgroundService
         }
         _logger.LogInformation($"Network stats: \n {NetworkStats.GetInformation()}");
         NetworkStats.Reset();
-    }
-
-    private static async Task<Task> WaitAny(Task task1, Task task2)
-    {
-        return await Task.WhenAny(task1, task2);
     }
 
     internal WebsocketInstance AddSocket(WebSocket webSocket, TaskCompletionSource socketFinishedTcs)

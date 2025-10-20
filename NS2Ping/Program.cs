@@ -32,23 +32,18 @@ app.UseStaticFiles(new StaticFileOptions()
     {
         context.Context.Response.Headers["Permissions-Policy"] = "autoplay";
         context.Context.Response.Headers["Feature-Policy"] = "autoplay";
-        context.Context.Response.Headers.Add("cache-control", new[] { "public,max-age=3600" });
-        context.Context.Response.Headers.Add("Expires", new[] { DateTime.UtcNow.AddHours(1).ToString("R") }); // Format RFC1123
+        context.Context.Response.Headers["Cache-Control"] = "public,max-age=3600";
+        context.Context.Response.Headers["Expires"] = DateTime.UtcNow.AddHours(1).ToString("R"); // Format RFC1123
     }
 });
 app.UseWebSockets();
 
-app.MapGet("/servers", () =>
+app.MapGet("/servers", (PingService pingService) => pingService.GetServerInfos());
+
+
+
+app.MapGet("/server/{id}", (int id, PingService pingService) =>
 {
-    var pingService = app.Services.GetRequiredService<PingService>();
-    return pingService.GetServerInfos();
-});
-
-
-
-app.MapGet("/server/{id}", (int id) =>
-{
-    var pingService = app.Services.GetRequiredService<PingService>();
     var info = new ServerInfo()
     {
         playerInfo = pingService.GetPlayerInfo(id),
@@ -66,10 +61,10 @@ app.Use(async (context, next) =>
         {
             using var webSocket = await context.WebSockets.AcceptWebSocketAsync(
     new WebSocketAcceptContext { DangerousEnableCompression = true });
-            var socketFinishedTcs = new TaskCompletionSource();
+            var socketFinishedTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             var pingService = app.Services.GetRequiredService<PingService>();
             var ws = pingService.AddSocket(webSocket, socketFinishedTcs);
-            ws.Read();
+            _ = ws.Read(context.RequestAborted);
             await socketFinishedTcs.Task;
         }
         else
